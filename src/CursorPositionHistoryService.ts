@@ -36,17 +36,11 @@ export class CursorPositionHistoryService {
 			this.nextPositions = this.enforceMaxHistoryLength(this.nextPositions);
 		}
 
-		if (currentPosition?.file != previousPosition.file) {
-			await activeLeaf?.openFile(previousPosition.file)
-		}
-
-		const editorPosition: EditorPosition = { line: previousPosition.line, ch: previousPosition.positionInLine };
-		editor?.setSelection(editorPosition)
-		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, false);
+		await this.navigateToPosition(editor, activeLeaf, currentPosition, previousPosition);
 	}
 
 	/** the equivalent of "Redo" for the cursor position */
-	async proceedToNextPosition(editor: Editor | null, activeLeaf?: WorkspaceLeaf | null) {
+	async proceedToNextPosition(editor: Editor | null, activeLeaf: WorkspaceLeaf | null) {
 		const nextPosition = this.nextPositions.pop();
 
 		if (!nextPosition) {
@@ -61,13 +55,22 @@ export class CursorPositionHistoryService {
 			this.previousPositions = this.enforceMaxHistoryLength(this.previousPositions);
 		}
 
-		if (currentPosition?.file != nextPosition.file) {
-			await activeLeaf?.openFile(nextPosition.file)
+		await this.navigateToPosition(editor, activeLeaf, currentPosition, nextPosition);
+	}
+
+	private async navigateToPosition(
+		editor: Editor | null,
+		activeLeaf: WorkspaceLeaf | null,
+		fromPosition: HistoricCursorPosition | undefined,
+		toPosition: HistoricCursorPosition
+	): Promise<void> {
+		if (fromPosition?.file != toPosition.file) {
+			await activeLeaf?.openFile(toPosition.file)
 		}
 
-		const editorPosition: EditorPosition = { line: nextPosition.line, ch: nextPosition.positionInLine };
+		const editorPosition: EditorPosition = { line: toPosition.line, ch: toPosition.positionInLine };
 		editor?.setSelection(editorPosition)
-		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, false);
+		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, true);
 	}
 
 	/**
