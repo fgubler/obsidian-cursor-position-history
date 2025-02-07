@@ -12,6 +12,7 @@ import {
 	SettingsProvider
 } from "./models/PluginSettings";
 import {PLUGIN_NAME} from "./models/Constants";
+import {CursorPositionHistoryService} from "./CursorPositionHistoryService";
 
 export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvider {
 	settings: PluginSettings;
@@ -20,19 +21,23 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	lastSavedDatabase: DatabaseRepresentation;
 
 	loadedLeafIdList: string[] = [];
+	historyService!: CursorPositionHistoryService;
 
-	lastCursorState: CursorState | undefined;
+	latestCursorState: CursorState | undefined;
 	lastLoadedFileName: string;
 
 	loadingFile = false;
 
 	async onload() {
+		this.historyService = new CursorPositionHistoryService();
+
 		await this.loadSettings();
 		await this.initializeDatabase();
 		this.addSettingTab(new SettingsTab(this.app, this, MIN_SAVE_TIMEOUT_MS));
 
 		await this.registerEvents();
 		await this.registerTimeIntervals();
+		await this.registerShortcutCommands();
 
 		await this.restoreCursorState();
 	}
@@ -77,6 +82,25 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		);
 	}
 
+	private async registerShortcutCommands(): Promise<void> {
+		this.addCommand({
+			id: 'previous-cursor-position',
+			name: 'Go to previous cursor position',
+			editorCallback: async (editor: Editor, _: MarkdownView) => {
+				const activeLeaf = this.app.workspace.getMostRecentLeaf();
+				await this.historyService.returnToPreviousPosition(editor, activeLeaf);
+			}
+		});
+		this.addCommand({
+			id: 'cursor-position-forward',
+			name: 'Go to next cursor position',
+			editorCallback: async (editor: Editor, _: MarkdownView) => {
+				const activeLeaf = this.app.workspace.getMostRecentLeaf();
+				await this.historyService.proceedToNextPosition(editor, activeLeaf);
+			}
+		});
+	}
+
 	renameFile(file: TAbstractFile, oldPath: string) {
 		let newName = file.path;
 		let oldName = oldPath;
@@ -92,7 +116,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 
 	checkCursorStateChanged() {
-		let fileName = this.app.workspace.getActiveFile()?.path;
+		const activeFile = this.app.workspace.getActiveFile();
+		let fileName = activeFile?.path;
 
 		// wait until the file is loaded
 		if (!fileName || !this.lastLoadedFileName || fileName != this.lastLoadedFileName || this.loadingFile) {
@@ -101,13 +126,21 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		let state = this.getCursorState();
 
-		if (!this.lastCursorState) {
-			this.lastCursorState = state;
+		if (!this.latestCursorState) {
+			this.latestCursorState = state;
 		}
 
 		if (this.shouldSaveState(state)) {
 			this.saveCursorState(state).then();
-			this.lastCursorState = state;
+			this.latestCursorState = state;
+
+			if (activeFile && state.cursor) {
+				this.historyService.updateCurrentPosition({
+					file: activeFile,
+					line: state.cursor.to.line,
+					positionInLine: state.cursor.to.ch,
+				})
+			}
 		}
 	}
 
@@ -116,7 +149,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			state.scrollState &&
 			!isNaN(state.scrollState.top) &&
 			!isNaN(state.scrollState.left) &&
-			!this.isCursorStatesEquals(state, this.lastCursorState)
+			!this.isCursorStatesEquals(state, this.latestCursorState)
 		);
 	}
 
@@ -187,7 +220,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		this.loadingFile = true;
 
 		if (this.lastLoadedFileName != fileName) {
-			this.lastCursorState = {}
+			this.latestCursorState = {}
 			this.lastLoadedFileName = fileName;
 
 			let state: CursorState | undefined = undefined;
@@ -208,7 +241,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 					}
 				}
 			}
-			this.lastCursorState = state;
+			this.latestCursorState = state;
 		}
 
 		this.loadingFile = false;

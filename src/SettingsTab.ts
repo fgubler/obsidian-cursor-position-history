@@ -34,7 +34,7 @@ export class SettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Delay after opening a new note in milliseconds')
 			.setDesc("A time-delay to avoid scrolling when opening a file through a link which already scrolls to a specific position. " +
-				"If you are not using links to page sections, set the delay to zero (slider to the left). Slider values: 0-300 ms (default value: 100 ms).")
+				"If you are not using links to page sections, set the delay to zero (slider to the left). Slider values: 0-300 ms (default value: 200 ms).")
 			.addSlider((text) =>
 				text
 					.setLimits(0, 300, 10)
