@@ -1,12 +1,12 @@
 import {App, PluginSettingTab, Setting, TextComponent} from "obsidian";
-import {CursorPositionHistory} from "./CursorPositionHistoryPlugin";
+import {CursorPositionHistoryPlugin} from "./CursorPositionHistoryPlugin";
 import {PLUGIN_NAME} from "./models/Constants";
 import {SettingsProvider} from "./models/PluginSettings";
 
 export class SettingsTab extends PluginSettingTab {
 	private settingsProvider: SettingsProvider;
 
-	constructor(app: App, plugin: CursorPositionHistory, private minSaveTimeoutMs: number) {
+	constructor(app: App, plugin: CursorPositionHistoryPlugin, private minSaveTimeoutMs: number) {
 		super(app, plugin);
 		this.settingsProvider = plugin;
 	}

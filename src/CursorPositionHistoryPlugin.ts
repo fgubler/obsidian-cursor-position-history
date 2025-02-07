@@ -8,17 +8,22 @@ import {
 	CURSOR_POSITION_UPDATE_INTERVAL_MS,
 	DEFAULT_SETTINGS,
 	MIN_SAVE_TIMEOUT_MS,
-	PluginSettings, SettingsProvider
+	PluginSettings,
+	SettingsProvider
 } from "./models/PluginSettings";
 import {PLUGIN_NAME} from "./models/Constants";
 
-export class CursorPositionHistory extends Plugin implements SettingsProvider {
+export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvider {
 	settings: PluginSettings;
-	database: { [file_path: string]: CursorState };
-	lastSavedDatabase: { [file_path: string]: CursorState };
-	lastEphemeralState: CursorState | undefined;
-	lastLoadedFileName: string;
+
+	database: DatabaseRepresentation;
+	lastSavedDatabase: DatabaseRepresentation;
+
 	loadedLeafIdList: string[] = [];
+
+	lastCursorState: CursorState | undefined;
+	lastLoadedFileName: string;
+
 	loadingFile = false;
 
 	async onload() {
@@ -29,7 +34,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 		await this.registerEvents();
 		await this.registerTimeIntervals();
 
-		await this.restoreEphemeralState();
+		await this.restoreCursorState();
 	}
 
 	private async initializeDatabase(): Promise<void> {
@@ -45,7 +50,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 
 	private async registerEvents(): Promise<void> {
 		this.registerEvent(
-			this.app.workspace.on('file-open', (_) => this.restoreEphemeralState())
+			this.app.workspace.on('file-open', (_) => this.restoreCursorState())
 		);
 
 		this.registerEvent(
@@ -64,7 +69,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 
 	private async registerTimeIntervals(): Promise<void> {
 		this.registerInterval(
-			window.setInterval(() => this.checkEphemeralStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
+			window.setInterval(() => this.checkCursorStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
 		);
 
 		this.registerInterval(
@@ -86,7 +91,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 	}
 
 
-	checkEphemeralStateChanged() {
+	checkCursorStateChanged() {
 		let fileName = this.app.workspace.getActiveFile()?.path;
 
 		// wait until the file is loaded
@@ -94,15 +99,15 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 			return;
 		}
 
-		let state = this.getEphemeralState();
+		let state = this.getCursorState();
 
-		if (!this.lastEphemeralState) {
-			this.lastEphemeralState = state;
+		if (!this.lastCursorState) {
+			this.lastCursorState = state;
 		}
 
 		if (this.shouldSaveState(state)) {
-			this.saveEphemeralState(state).then();
-			this.lastEphemeralState = state;
+			this.saveCursorState(state).then();
+			this.lastCursorState = state;
 		}
 	}
 
@@ -111,11 +116,11 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 			state.scrollState &&
 			!isNaN(state.scrollState.top) &&
 			!isNaN(state.scrollState.left) &&
-			!this.isEphemeralStatesEquals(state, this.lastEphemeralState)
+			!this.isCursorStatesEquals(state, this.lastCursorState)
 		);
 	}
 
-	isEphemeralStatesEquals(state1: CursorState | undefined, state2: CursorState | undefined): boolean {
+	isCursorStatesEquals(state1: CursorState | undefined, state2: CursorState | undefined): boolean {
 		const cursor1 = state1?.cursor;
 		const cursor2 = state2?.cursor;
 
@@ -156,7 +161,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 	}
 
 
-	async saveEphemeralState(st: CursorState) {
+	async saveCursorState(st: CursorState) {
 		let fileName = this.app.workspace.getActiveFile()?.path;
 		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
 			this.database[fileName] = st;
@@ -164,7 +169,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 	}
 
 
-	async restoreEphemeralState() {
+	async restoreCursorState() {
 		let fileName = this.app.workspace.getActiveFile()?.path;
 
 		if (!fileName || this.loadingFile && this.lastLoadedFileName == fileName) { // already started loading
@@ -182,7 +187,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 		this.loadingFile = true;
 
 		if (this.lastLoadedFileName != fileName) {
-			this.lastEphemeralState = {}
+			this.lastCursorState = {}
 			this.lastLoadedFileName = fileName;
 
 			let state: CursorState | undefined = undefined;
@@ -199,11 +204,11 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 
 					if (!containsFlashingSpan) {
 						await delay(10)
-						this.setEphemeralState(state);
+						this.setCursorState(state);
 					}
 				}
 			}
-			this.lastEphemeralState = state;
+			this.lastCursorState = state;
 		}
 
 		this.loadingFile = false;
@@ -241,7 +246,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 		}
 	}
 
-	getEphemeralState(): CursorState {
+	getCursorState(): CursorState {
 		const state: CursorState = {};
 		let editor = this.getEditor();
 
@@ -260,7 +265,7 @@ export class CursorPositionHistory extends Plugin implements SettingsProvider {
 		return state;
 	}
 
-	setEphemeralState(state: CursorState) {
+	setCursorState(state: CursorState) {
 		let editor = this.getEditor();
 		if (editor) {
 			if (state.cursor) {

@@ -1,3 +1,3 @@
-import {CursorPositionHistory} from "./src/CursorPositionHistoryPlugin";
+import {CursorPositionHistoryPlugin} from "./src/CursorPositionHistoryPlugin";
 
-export default CursorPositionHistory;
+export default CursorPositionHistoryPlugin;
