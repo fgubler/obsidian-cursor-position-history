@@ -85,7 +85,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	private async registerShortcutCommands(): Promise<void> {
 		this.addCommand({
 			id: 'previous-cursor-position',
-			name: 'Go to previous cursor position',
+			name: 'Return to previous cursor position',
 			editorCallback: async (editor: Editor, _: MarkdownView) => {
 				const activeLeaf = this.app.workspace.getMostRecentLeaf();
 				await this.historyService.returnToPreviousPosition(editor, activeLeaf);
@@ -93,7 +93,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		});
 		this.addCommand({
 			id: 'cursor-position-forward',
-			name: 'Go to next cursor position',
+			name: 'Re-return to next cursor position',
 			editorCallback: async (editor: Editor, _: MarkdownView) => {
 				const activeLeaf = this.app.workspace.getMostRecentLeaf();
 				await this.historyService.proceedToNextPosition(editor, activeLeaf);
@@ -325,7 +325,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		this.settings = settings;
 	}
 
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+	async saveSettings(newSettings: PluginSettings): Promise<void> {
+		this.settings = {... newSettings};
+		await this.saveData(newSettings);
 	}
 }

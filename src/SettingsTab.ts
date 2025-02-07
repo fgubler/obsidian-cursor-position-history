@@ -13,6 +13,7 @@ export class SettingsTab extends PluginSettingTab {
 
 	display(): void {
 		let { containerEl } = this;
+		const settings = this.settingsProvider.settings;
 
 		containerEl.empty();
 
@@ -24,10 +25,10 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((text: TextComponent) =>
 				text
 					.setPlaceholder('Example: cursor-position-history.json')
-					.setValue(this.settingsProvider.settings.databaseFileName)
+					.setValue(settings.databaseFileName)
 					.onChange(async (value: string) => {
-						this.settingsProvider.settings.databaseFileName = value;
-						await this.settingsProvider.saveSettings();
+						settings.databaseFileName = value;
+						await this.settingsProvider.saveSettings(settings);
 					})
 			);
 
@@ -38,24 +39,41 @@ export class SettingsTab extends PluginSettingTab {
 			.addSlider((text) =>
 				text
 					.setLimits(0, 300, 10)
-					.setValue(this.settingsProvider.settings.delayAfterFileOpeningMs)
+					.setValue(settings.delayAfterFileOpeningMs)
 					.onChange(async (value) => {
-						this.settingsProvider.settings.delayAfterFileOpeningMs = value;
-						await this.settingsProvider.saveSettings();
+						settings.delayAfterFileOpeningMs = value;
+						await this.settingsProvider.saveSettings(settings);
 					})
 			);
 
 		new Setting(containerEl)
 			.setName('Delay between saving the current cursor position')
-			.setDesc("The current data is stored to the database file periodically (as well as when Obsidian is closed)."			)
+			.setDesc("The current data is stored to the database file periodically (as well as when Obsidian is closed).")
 			.addSlider((text) =>
 				text
 					.setLimits(this.minSaveTimeoutMs, this.minSaveTimeoutMs * 10, 10)
-					.setValue(this.settingsProvider.settings.saveTimoutMs)
+					.setValue(settings.saveTimoutMs)
 					.onChange(async (value) => {
-						this.settingsProvider.settings.saveTimoutMs = value;
-						await this.settingsProvider.saveSettings();
+						settings.saveTimoutMs = value;
+						await this.settingsProvider.saveSettings(settings);
 					})
 			);
+
+		new Setting(containerEl)
+			.setName('Maximum history length')
+			.setDesc(`The history of the last N cursor positions is saved (until restarting Obsidian) to allow the user to go back and forth with short-cuts.`)
+			.addSlider((text) =>
+				text
+					.setLimits(100, 2000, 100)
+					.setValue(settings.maxHistoryLength)
+					.onChange(async (value) => {
+						settings.maxHistoryLength = value;
+						await this.settingsProvider.saveSettings(settings);
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Shortcuts")
+			.setDesc("Shortcuts can be configured to move backward and forward within the cursor history: 'Return to previous cursor position' and 'Re-return to next cursor position'")
 	}
 }
