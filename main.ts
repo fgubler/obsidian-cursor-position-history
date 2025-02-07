@@ -1,89 +1,315 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import {Editor, EditorPosition, MarkdownView, Plugin, TAbstractFile} from 'obsidian';
+import {SettingsTab} from "./SettingsTab";
+import {serializeError} from "./LoggingUtil";
+import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./ObsidianUtil";
+import {copySerializable, delay} from "./BaseUtil";
 
-// Remember to rename these classes and interfaces!
-
-interface MyPluginSettings {
-	mySetting: string;
+interface PluginSettings {
+	databaseFileName: string;
+	delayAfterFileOpeningMs: number;
+	saveTimoutMs: number;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+export const PLUGIN_NAME = "CursorPositionHistoryPlugin";
+
+const MIN_SAVE_TIMEOUT_MS = 5000;
+const CURSOR_POSITION_UPDATE_INTERVAL_MS = 200;
+
+const DEFAULT_SETTINGS: PluginSettings = {
+	databaseFileName: '.obsidian/plugins/obsidian-cursor-history/cursor-position-history.json',
+	delayAfterFileOpeningMs: 100,
+	saveTimoutMs: MIN_SAVE_TIMEOUT_MS,
+};
+
+interface EphemeralState {
+	cursor?: {
+		from: EditorPosition,
+		to: EditorPosition
+	},
+	scrollingPosition?: number
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+/**
+ * the structure of the database-entries
+ *  - string-keys which represent filePaths
+ *  - the values represent the last cursor position in that file
+ */
+type DatabaseRepresentation = { [filePath: string]: EphemeralState; };
+
+export default class CursorPositionHistory extends Plugin {
+	settings: PluginSettings;
+	database: { [file_path: string]: EphemeralState };
+	lastSavedDatabase: { [file_path: string]: EphemeralState };
+	lastEphemeralState: EphemeralState | undefined;
+	lastLoadedFileName: string;
+	loadedLeafIdList: string[] = [];
+	loadingFile = false;
 
 	async onload() {
 		await this.loadSettings();
+		await this.initializeDatabase();
+		this.addSettingTab(new SettingsTab(this.app, this, MIN_SAVE_TIMEOUT_MS));
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+		await this.registerEvents();
+		await this.registerTimeIntervals();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
-
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
+		await this.restoreEphemeralState();
 	}
 
-	onunload() {
+	private async initializeDatabase(): Promise<void> {
+		try {
+			this.database = await this.readDatabase();
+		} catch (e) {
+			console.error(`${PLUGIN_NAME} can't read database: ` + serializeError(e));
+			this.database = {};
+			this.lastSavedDatabase = {};
+		}
+		this.lastSavedDatabase = copySerializable(this.database);
+	}
 
+	private async registerEvents(): Promise<void> {
+		this.registerEvent(
+			this.app.workspace.on('file-open', (_) => this.restoreEphemeralState())
+		);
+
+		this.registerEvent(
+			this.app.workspace.on('quit', () => { this.writeDatabase(this.database) }),
+		);
+
+
+		this.registerEvent(
+			this.app.vault.on('rename', (file, oldPath) => this.renameFile(file, oldPath)),
+		);
+
+		this.registerEvent(
+			this.app.vault.on('delete', (file) => this.deleteFile(file)),
+		);
+	}
+
+	private async registerTimeIntervals(): Promise<void> {
+		// TODO try registering for an event to be informed about cursor position changes
+		this.registerInterval(
+			window.setInterval(() => this.checkEphemeralStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
+		);
+
+		this.registerInterval(
+			window.setInterval(() => this.writeDatabase(this.database), this.settings.saveTimoutMs)
+		);
+	}
+
+	renameFile(file: TAbstractFile, oldPath: string) {
+		let newName = file.path;
+		let oldName = oldPath;
+		this.database[newName] = this.database[oldName];
+		delete this.database[oldName];
+	}
+
+
+	deleteFile(file: TAbstractFile) {
+		let fileName = file.path;
+		delete this.database[fileName];
+	}
+
+
+	checkEphemeralStateChanged() {
+		let fileName = this.app.workspace.getActiveFile()?.path;
+
+		// wait until the file is loaded
+		if (!fileName || !this.lastLoadedFileName || fileName != this.lastLoadedFileName || this.loadingFile) {
+			return;
+		}
+
+		let state = this.getEphemeralState();
+
+		if (!this.lastEphemeralState) {
+			this.lastEphemeralState = state;
+		}
+
+		if (this.shouldSaveState(state)) {
+			this.saveEphemeralState(state).then();
+			this.lastEphemeralState = state;
+		}
+	}
+
+	private shouldSaveState(state: EphemeralState): boolean {
+		return !!(
+			state.scrollingPosition &&
+			!isNaN(state.scrollingPosition) &&
+			!this.isEphemeralStatesEquals(state, this.lastEphemeralState)
+		);
+	}
+
+	isEphemeralStatesEquals(state1: EphemeralState | undefined, state2: EphemeralState | undefined): boolean {
+		const cursor1 = state1?.cursor;
+		const cursor2 = state2?.cursor;
+
+		if (!cursor1) {
+			return !cursor2;
+		}
+		if (!cursor2) {
+			return !cursor1;
+		}
+
+		if (cursor1.from.ch != cursor2.from.ch) {
+			return false;
+		}
+		if (cursor1.from.line != cursor2.from.line) {
+			return false;
+		}
+		if (cursor1.to.ch != cursor2.to.ch) {
+			return false;
+		}
+		if (cursor1.to.line != cursor2.to.line) {
+			return false;
+		}
+		if (state1.scrollingPosition && !state2.scrollingPosition) {
+			return false;
+		}
+		if (!state1.scrollingPosition && state2.scrollingPosition) {
+			return false;
+		}
+		if (state1.scrollingPosition && state1.scrollingPosition != state2.scrollingPosition) {
+			return false;
+		}
+
+		return true;
+	}
+
+
+	async saveEphemeralState(st: EphemeralState) {
+		let fileName = this.app.workspace.getActiveFile()?.path;
+		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
+			this.database[fileName] = st;
+		}
+	}
+
+
+	async restoreEphemeralState() {
+		let fileName = this.app.workspace.getActiveFile()?.path;
+
+		if (!fileName || this.loadingFile && this.lastLoadedFileName == fileName) { // already started loading
+			return;
+		}
+
+		if (this.isActiveFileAlreadyLoaded()) {
+			return;
+		}
+
+		this.loadedLeafIdList = this.app.workspace.getLeavesOfType("markdown")
+			.map(leaf => createFileIdentifier(leaf) ?? INVALID_FILE_IDENTIFIER)
+			.filter(fileIdentifier => fileIdentifier !== INVALID_FILE_IDENTIFIER);
+
+		this.loadingFile = true;
+
+		if (this.lastLoadedFileName != fileName) {
+			this.lastEphemeralState = {}
+			this.lastLoadedFileName = fileName;
+
+			let state: EphemeralState | undefined = undefined;
+
+			if (fileName) {
+				state = this.database[fileName];
+				if (state) {
+					// wait until the file is ready
+					await delay(this.settings.delayAfterFileOpeningMs)
+
+					// Don't scroll when the file was opened by a link which already scrolls and highlights text
+					// (because it e.g. targets a specific heading)
+					let containsFlashingSpan = this.app.workspace.containerEl.querySelector('span.is-flashing');
+
+					if (!containsFlashingSpan) {
+						await delay(10)
+						this.setEphemeralState(state);
+					}
+				}
+			}
+			this.lastEphemeralState = state;
+		}
+
+		this.loadingFile = false;
+	}
+
+	private isActiveFileAlreadyLoaded(): boolean {
+		const activeLeaf = this.app.workspace.getMostRecentLeaf();
+		const fileIdentifier = createFileIdentifier(activeLeaf);
+		return this.loadedLeafIdList.includes(fileIdentifier ?? INVALID_FILE_IDENTIFIER);
+	}
+
+	async readDatabase(): Promise<{ [filePath: string]: EphemeralState; }> {
+		let database: { [filePath: string]: EphemeralState; } = {}
+
+		if (await this.app.vault.adapter.exists(this.settings.databaseFileName)) {
+			let data = await this.app.vault.adapter.read(this.settings.databaseFileName);
+			database = JSON.parse(data);
+		}
+
+		return database;
+	}
+
+	async writeDatabase(database: DatabaseRepresentation) {
+		//create folder for database file if not exist
+		const newParentFolder = this.settings.databaseFileName.substring(0, this.settings.databaseFileName.lastIndexOf("/"));
+		const parentFolderExists = await this.app.vault.adapter.exists(newParentFolder);
+		if (!parentFolderExists) {
+			await this.app.vault.adapter.mkdir(newParentFolder);
+		}
+
+		const databaseChanged = JSON.stringify(this.database) !== JSON.stringify(this.lastSavedDatabase);
+		if (databaseChanged) {
+			await this.app.vault.adapter.write(this.settings.databaseFileName, JSON.stringify(database));
+			this.lastSavedDatabase = copySerializable(database);
+		}
+	}
+
+	getEphemeralState(): EphemeralState {
+		const state: EphemeralState = {};
+		const currentView = this.app.workspace.getActiveViewOfType(MarkdownView);
+		const scrollPositionRaw = currentView?.currentMode?.getScroll()?.toFixed(4);
+		state.scrollingPosition = Number(scrollPositionRaw);
+
+		let editor = this.getEditor();
+		if (editor) {
+			let from = editor.getCursor("anchor");
+			let to = editor.getCursor("head");
+			if (from && to) {
+				state.cursor = {
+					from: { ch: from.ch, line: from.line },
+					to: { ch: to.ch, line: to.line }
+				}
+			}
+		}
+
+		return state;
+	}
+
+	setEphemeralState(state: EphemeralState) {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+
+		if (state.cursor) {
+			let editor = this.getEditor();
+			if (editor) {
+				editor.setSelection(state.cursor.from, state.cursor.to);
+			}
+		}
+
+		if (view && state.scrollingPosition) {
+			view.setEphemeralState(state);
+		}
+	}
+
+	private getEditor(): Editor | undefined {
+		return this.app.workspace.getActiveViewOfType(MarkdownView)?.editor;
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		let settings: PluginSettings = {
+			...DEFAULT_SETTINGS,
+			...(await this.loadData())
+		}
+		if (settings?.saveTimoutMs < MIN_SAVE_TIMEOUT_MS) {
+			settings.saveTimoutMs = MIN_SAVE_TIMEOUT_MS;
+		}
+		this.settings = settings;
 	}
 
 	async saveSettings() {
@@ -91,44 +317,5 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
-}
