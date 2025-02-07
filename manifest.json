@@ -3,9 +3,9 @@
 	"name": "Cursor Position History",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Remembers previous positions of the cursor: both within a file and across files. If you open a file, the plugin will automatically scroll to position where the cursor was the last time you had opened that file. The plugin also allows you to jump to the previous cursor position, like in IDEs.",
+	"description": "Remembers the previous positions of the cursor across files: auto-scroll to the correct position in a new file. Navigate backward and forward through your cursor position history without losing context.",
 	"author": "Florian Gubler",
-	"authorUrl": "https://github.com/fgubler/obsidian-cursor-history",
+	"authorUrl": "https://github.com/fgubler/obsidian-cursor-position-history",
 	"fundingUrl": "https://github.com/sponsors/fgubler",
 	"isDesktopOnly": false
 }
