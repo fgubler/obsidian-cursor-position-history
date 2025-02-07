@@ -19,6 +19,26 @@ export class SettingsTab extends PluginSettingTab {
 
 		containerEl.createEl('h2', { text: `${PLUGIN_NAME} - Settings` });
 
+		containerEl.createEl("p", {
+			text: "This plugin has two functionalities - both related to the position of the cursor within the editor.",
+		});
+
+		const listOfFeaturesEl = containerEl.createEl("ol");
+		listOfFeaturesEl.createEl("li", {
+			text: "It remembers the previous cursor position whenever you switch between documents. When you return to a previously opened document, it automatically scrolls to the position where you left it.",
+		});
+		listOfFeaturesEl.createEl("li", {
+			text: "It keeps a history of the last few hundred cursor positions (across files), allowing you to move backward and forward using shortcuts.",
+		});
+
+		const listOfShortcutsEl = listOfFeaturesEl.lastChild?.createEl("ul");
+		listOfShortcutsEl?.createEl("li", {
+			text: "Shortcut 1: \"Return to previous cursor position\" goes backward in the history.",
+		});
+		listOfShortcutsEl?.createEl("li", {
+			text: "Shortcut 2: \"Re-return to next cursor position\" goes forward in the history.",
+		});
+
 		new Setting(containerEl)
 			.setName('Database file name')
 			.setDesc('The plugin will use this file to store its data which needs to survive a restart of Obsidian.')
@@ -71,9 +91,5 @@ export class SettingsTab extends PluginSettingTab {
 						await this.settingsProvider.saveSettings(settings);
 					})
 			);
-
-		new Setting(containerEl)
-			.setName("Shortcuts")
-			.setDesc("Shortcuts can be configured to move backward and forward within the cursor history: 'Return to previous cursor position' and 'Re-return to next cursor position'")
 	}
 }
