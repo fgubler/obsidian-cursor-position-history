@@ -1,4 +1,4 @@
-import {Editor, EditorPosition, MarkdownView, Plugin, TAbstractFile} from 'obsidian';
+import {Editor, EditorRange, MarkdownView, Plugin, TAbstractFile} from 'obsidian';
 import {SettingsTab} from "./SettingsTab";
 import {serializeError} from "./LoggingUtil";
 import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./ObsidianUtil";
@@ -21,12 +21,14 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	saveTimoutMs: MIN_SAVE_TIMEOUT_MS,
 };
 
-interface EphemeralState {
-	cursor?: {
-		from: EditorPosition,
-		to: EditorPosition
-	},
-	scrollingPosition?: number
+interface CursorState {
+	cursor?: EditorRange,
+	scrollState?: ScrollState
+}
+
+interface ScrollState {
+	top: number;
+	left: number;
 }
 
 /**
@@ -34,13 +36,13 @@ interface EphemeralState {
  *  - string-keys which represent filePaths
  *  - the values represent the last cursor position in that file
  */
-type DatabaseRepresentation = { [filePath: string]: EphemeralState; };
+type DatabaseRepresentation = { [filePath: string]: CursorState; };
 
 export default class CursorPositionHistory extends Plugin {
 	settings: PluginSettings;
-	database: { [file_path: string]: EphemeralState };
-	lastSavedDatabase: { [file_path: string]: EphemeralState };
-	lastEphemeralState: EphemeralState | undefined;
+	database: { [file_path: string]: CursorState };
+	lastSavedDatabase: { [file_path: string]: CursorState };
+	lastEphemeralState: CursorState | undefined;
 	lastLoadedFileName: string;
 	loadedLeafIdList: string[] = [];
 	loadingFile = false;
@@ -131,15 +133,16 @@ export default class CursorPositionHistory extends Plugin {
 		}
 	}
 
-	private shouldSaveState(state: EphemeralState): boolean {
+	private shouldSaveState(state: CursorState): boolean {
 		return !!(
-			state.scrollingPosition &&
-			!isNaN(state.scrollingPosition) &&
+			state.scrollState &&
+			!isNaN(state.scrollState.top) &&
+			!isNaN(state.scrollState.left) &&
 			!this.isEphemeralStatesEquals(state, this.lastEphemeralState)
 		);
 	}
 
-	isEphemeralStatesEquals(state1: EphemeralState | undefined, state2: EphemeralState | undefined): boolean {
+	isEphemeralStatesEquals(state1: CursorState | undefined, state2: CursorState | undefined): boolean {
 		const cursor1 = state1?.cursor;
 		const cursor2 = state2?.cursor;
 
@@ -162,13 +165,17 @@ export default class CursorPositionHistory extends Plugin {
 		if (cursor1.to.line != cursor2.to.line) {
 			return false;
 		}
-		if (state1.scrollingPosition && !state2.scrollingPosition) {
+
+		const scrollState1 = state1?.scrollState;
+		const scrollState2 = state2?.scrollState;
+
+		if (scrollState1 && !scrollState2) {
 			return false;
 		}
-		if (!state1.scrollingPosition && state2.scrollingPosition) {
+		if (!scrollState1 && scrollState2) {
 			return false;
 		}
-		if (state1.scrollingPosition && state1.scrollingPosition != state2.scrollingPosition) {
+		if (scrollState1 && scrollState2 && (scrollState1.left != scrollState2.left || scrollState1.top != scrollState2.top)) {
 			return false;
 		}
 
@@ -176,7 +183,7 @@ export default class CursorPositionHistory extends Plugin {
 	}
 
 
-	async saveEphemeralState(st: EphemeralState) {
+	async saveEphemeralState(st: CursorState) {
 		let fileName = this.app.workspace.getActiveFile()?.path;
 		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
 			this.database[fileName] = st;
@@ -205,7 +212,7 @@ export default class CursorPositionHistory extends Plugin {
 			this.lastEphemeralState = {}
 			this.lastLoadedFileName = fileName;
 
-			let state: EphemeralState | undefined = undefined;
+			let state: CursorState | undefined = undefined;
 
 			if (fileName) {
 				state = this.database[fileName];
@@ -235,8 +242,8 @@ export default class CursorPositionHistory extends Plugin {
 		return this.loadedLeafIdList.includes(fileIdentifier ?? INVALID_FILE_IDENTIFIER);
 	}
 
-	async readDatabase(): Promise<{ [filePath: string]: EphemeralState; }> {
-		let database: { [filePath: string]: EphemeralState; } = {}
+	async readDatabase(): Promise<{ [filePath: string]: CursorState; }> {
+		let database: { [filePath: string]: CursorState; } = {}
 
 		if (await this.app.vault.adapter.exists(this.settings.databaseFileName)) {
 			let data = await this.app.vault.adapter.read(this.settings.databaseFileName);
@@ -261,14 +268,12 @@ export default class CursorPositionHistory extends Plugin {
 		}
 	}
 
-	getEphemeralState(): EphemeralState {
-		const state: EphemeralState = {};
-		const currentView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		const scrollPositionRaw = currentView?.currentMode?.getScroll()?.toFixed(4);
-		state.scrollingPosition = Number(scrollPositionRaw);
-
+	getEphemeralState(): CursorState {
+		const state: CursorState = {};
 		let editor = this.getEditor();
+
 		if (editor) {
+			state.scrollState = editor.getScrollInfo();
 			let from = editor.getCursor("anchor");
 			let to = editor.getCursor("head");
 			if (from && to) {
@@ -282,18 +287,15 @@ export default class CursorPositionHistory extends Plugin {
 		return state;
 	}
 
-	setEphemeralState(state: EphemeralState) {
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-
-		if (state.cursor) {
-			let editor = this.getEditor();
-			if (editor) {
+	setEphemeralState(state: CursorState) {
+		let editor = this.getEditor();
+		if (editor) {
+			if (state.cursor) {
 				editor.setSelection(state.cursor.from, state.cursor.to);
+				editor.scrollIntoView(state.cursor, true)
+			} else {
+				editor.scrollTo(state.scrollState?.left, state.scrollState?.top);
 			}
-		}
-
-		if (view && state.scrollingPosition) {
-			view.setEphemeralState(state);
 		}
 	}
 
