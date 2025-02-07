@@ -1,10 +1,14 @@
 import {App, PluginSettingTab, Setting, TextComponent} from "obsidian";
-import CursorPositionHistory, {PLUGIN_NAME} from "./main";
+import {CursorPositionHistory} from "./CursorPositionHistoryPlugin";
+import {PLUGIN_NAME} from "./models/Constants";
+import {SettingsProvider} from "./models/PluginSettings";
 
 export class SettingsTab extends PluginSettingTab {
+	private settingsProvider: SettingsProvider;
 
-	constructor(app: App, private plugin: CursorPositionHistory, private minSaveTimeoutMs: number) {
+	constructor(app: App, plugin: CursorPositionHistory, private minSaveTimeoutMs: number) {
 		super(app, plugin);
+		this.settingsProvider = plugin;
 	}
 
 	display(): void {
@@ -20,10 +24,10 @@ export class SettingsTab extends PluginSettingTab {
 			.addText((text: TextComponent) =>
 				text
 					.setPlaceholder('Example: cursor-position-history.json')
-					.setValue(this.plugin.settings.databaseFileName)
+					.setValue(this.settingsProvider.settings.databaseFileName)
 					.onChange(async (value: string) => {
-						this.plugin.settings.databaseFileName = value;
-						await this.plugin.saveSettings();
+						this.settingsProvider.settings.databaseFileName = value;
+						await this.settingsProvider.saveSettings();
 					})
 			);
 
@@ -34,10 +38,10 @@ export class SettingsTab extends PluginSettingTab {
 			.addSlider((text) =>
 				text
 					.setLimits(0, 300, 10)
-					.setValue(this.plugin.settings.delayAfterFileOpeningMs)
+					.setValue(this.settingsProvider.settings.delayAfterFileOpeningMs)
 					.onChange(async (value) => {
-						this.plugin.settings.delayAfterFileOpeningMs = value;
-						await this.plugin.saveSettings();
+						this.settingsProvider.settings.delayAfterFileOpeningMs = value;
+						await this.settingsProvider.saveSettings();
 					})
 			);
 
@@ -47,10 +51,10 @@ export class SettingsTab extends PluginSettingTab {
 			.addSlider((text) =>
 				text
 					.setLimits(this.minSaveTimeoutMs, this.minSaveTimeoutMs * 10, 10)
-					.setValue(this.plugin.settings.saveTimoutMs)
+					.setValue(this.settingsProvider.settings.saveTimoutMs)
 					.onChange(async (value) => {
-						this.plugin.settings.saveTimoutMs = value;
-						await this.plugin.saveSettings();
+						this.settingsProvider.settings.saveTimoutMs = value;
+						await this.settingsProvider.saveSettings();
 					})
 			);
 	}
