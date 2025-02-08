@@ -1,7 +1,7 @@
 import {App, PluginSettingTab, Setting, TextComponent} from "obsidian";
 import {CursorPositionHistoryPlugin} from "./CursorPositionHistoryPlugin";
 import {PLUGIN_NAME} from "./models/Constants";
-import {SettingsProvider} from "./models/PluginSettings";
+import {MAX_HISTORY_LENGTH, SettingsProvider} from "./models/PluginSettings";
 
 export class SettingsTab extends PluginSettingTab {
 	private settingsProvider: SettingsProvider;
@@ -66,12 +66,13 @@ export class SettingsTab extends PluginSettingTab {
 					})
 			);
 
+		const maxSaveTimeoutMs = this.minSaveTimeoutMs * 10;
 		new Setting(containerEl)
 			.setName('Delay between saving the current cursor position')
-			.setDesc("The current data is stored to the database file periodically (as well as when Obsidian is closed).")
+			.setDesc(`The current data is stored to the database file periodically (as well as when Obsidian is closed). Slider values: ${this.minSaveTimeoutMs / 1000}-${maxSaveTimeoutMs / 1000}s (default value: ${this.minSaveTimeoutMs / 1000}s).`)
 			.addSlider((text) =>
 				text
-					.setLimits(this.minSaveTimeoutMs, this.minSaveTimeoutMs * 10, 10)
+					.setLimits(this.minSaveTimeoutMs, maxSaveTimeoutMs, 10)
 					.setValue(settings.saveTimoutMs)
 					.onChange(async (value) => {
 						settings.saveTimoutMs = value;
@@ -81,7 +82,7 @@ export class SettingsTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Maximum history length')
-			.setDesc(`The history of the last N cursor positions is saved (until restarting Obsidian) to allow the user to go back and forth with short-cuts.`)
+			.setDesc(`The history of the last N cursor positions is saved (until restarting Obsidian) to allow the user to go back and forth with short-cuts. Slider values: 100-2000 (default value: ${MAX_HISTORY_LENGTH}).`)
 			.addSlider((text) =>
 				text
 					.setLimits(100, 2000, 100)

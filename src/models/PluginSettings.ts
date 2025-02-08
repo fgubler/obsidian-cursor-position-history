@@ -12,10 +12,11 @@ export interface PluginSettings {
 
 export const MIN_SAVE_TIMEOUT_MS = 5000;
 export const CURSOR_POSITION_UPDATE_INTERVAL_MS = 200;
+export const MAX_HISTORY_LENGTH = 500;
 
 export const DEFAULT_SETTINGS: PluginSettings = {
 	databaseFilePath: 'plugins/obsidian-cursor-position-history/cursor-position-history.json', // the base-path will be added during initialization
 	delayAfterFileOpeningMs: 200,
 	saveTimoutMs: MIN_SAVE_TIMEOUT_MS,
-	maxHistoryLength: 500
+	maxHistoryLength: MAX_HISTORY_LENGTH
 };

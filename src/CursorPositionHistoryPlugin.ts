@@ -29,7 +29,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	loadingFile = false;
 
 	async onload() {
-		this.historyService = new CursorPositionHistoryService();
+		this.historyService = new CursorPositionHistoryService(this);
 
 		await this.loadSettings();
 		await this.initializeDatabase();
