@@ -40,14 +40,14 @@ export class SettingsTab extends PluginSettingTab {
 		});
 
 		new Setting(containerEl)
-			.setName('Database file name')
+			.setName('Database file path')
 			.setDesc('The plugin will use this file to store its data which needs to survive a restart of Obsidian.')
 			.addText((text: TextComponent) =>
 				text
 					.setPlaceholder('Example: cursor-position-history.json')
-					.setValue(settings.databaseFileName)
+					.setValue(settings.databaseFilePath)
 					.onChange(async (value: string) => {
-						settings.databaseFileName = value;
+						settings.databaseFilePath = value;
 						await this.settingsProvider.saveSettings(settings);
 					})
 			);

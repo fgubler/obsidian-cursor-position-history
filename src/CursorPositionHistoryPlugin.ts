@@ -258,8 +258,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	async readDatabase(): Promise<{ [filePath: string]: CursorState; }> {
 		let database: { [filePath: string]: CursorState; } = {}
 
-		if (await this.app.vault.adapter.exists(this.settings.databaseFileName)) {
-			const data = await this.app.vault.adapter.read(this.settings.databaseFileName);
+		if (await this.app.vault.adapter.exists(this.settings.databaseFilePath)) {
+			const data = await this.app.vault.adapter.read(this.settings.databaseFilePath);
 			database = JSON.parse(data);
 		}
 
@@ -268,7 +268,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 	async writeDatabase(database: DatabaseRepresentation) {
 		//create folder for database file if not exist
-		const newParentFolder = this.settings.databaseFileName.substring(0, this.settings.databaseFileName.lastIndexOf("/"));
+		const newParentFolder = this.settings.databaseFilePath.substring(0, this.settings.databaseFilePath.lastIndexOf("/"));
 		const parentFolderExists = await this.app.vault.adapter.exists(newParentFolder);
 		if (!parentFolderExists) {
 			await this.app.vault.adapter.mkdir(newParentFolder);
@@ -276,7 +276,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		const databaseChanged = JSON.stringify(this.database) !== JSON.stringify(this.lastSavedDatabase);
 		if (databaseChanged) {
-			await this.app.vault.adapter.write(this.settings.databaseFileName, JSON.stringify(database));
+			await this.app.vault.adapter.write(this.settings.databaseFilePath, JSON.stringify(database));
 			this.lastSavedDatabase = copySerializable(database);
 		}
 	}
@@ -317,8 +317,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	async loadSettings() {
+		const defaultSettings = copySerializable(DEFAULT_SETTINGS);
+		defaultSettings.databaseFilePath = this.app.vault.configDir + "/" + defaultSettings.databaseFilePath;
+
 		const settings: PluginSettings = {
-			...DEFAULT_SETTINGS,
+			...defaultSettings,
 			...(await this.loadData())
 		}
 		if (settings?.saveTimoutMs < MIN_SAVE_TIMEOUT_MS) {
