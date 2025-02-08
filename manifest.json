@@ -1,7 +1,7 @@
 {
 	"id": "cursor-position-history",
 	"name": "Cursor Position History",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"minAppVersion": "0.15.0",
 	"description": "Remember the previous positions of the cursor across files: auto-scroll to the correct position in a new file. Navigate backward and forward through your cursor position history without losing context.",
 	"author": "Florian Gubler",
