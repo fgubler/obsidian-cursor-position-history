@@ -59,7 +59,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		);
 
 		this.registerEvent(
-			this.app.workspace.on('quit', () => { this.writeDatabase(this.database) }),
+			this.app.workspace.on('quit', () => {
+				this.writeDatabase(this.database)
+			}),
 		);
 
 
@@ -102,29 +104,29 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	renameFile(file: TAbstractFile, oldPath: string) {
-		let newName = file.path;
-		let oldName = oldPath;
+		const newName = file.path;
+		const oldName = oldPath;
 		this.database[newName] = this.database[oldName];
 		delete this.database[oldName];
 	}
 
 
 	deleteFile(file: TAbstractFile) {
-		let fileName = file.path;
+		const fileName = file.path;
 		delete this.database[fileName];
 	}
 
 
 	checkCursorStateChanged() {
 		const activeFile = this.app.workspace.getActiveFile();
-		let fileName = activeFile?.path;
+		const fileName = activeFile?.path;
 
 		// wait until the file is loaded
 		if (!fileName || !this.lastLoadedFileName || fileName != this.lastLoadedFileName || this.loadingFile) {
 			return;
 		}
 
-		let state = this.getCursorState();
+		const state = this.getCursorState();
 
 		if (!this.latestCursorState) {
 			this.latestCursorState = state;
@@ -195,7 +197,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 
 	async saveCursorState(st: CursorState) {
-		let fileName = this.app.workspace.getActiveFile()?.path;
+		const fileName = this.app.workspace.getActiveFile()?.path;
 		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
 			this.database[fileName] = st;
 		}
@@ -203,7 +205,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 
 	async restoreCursorState() {
-		let fileName = this.app.workspace.getActiveFile()?.path;
+		const fileName = this.app.workspace.getActiveFile()?.path;
 
 		if (!fileName || this.loadingFile && this.lastLoadedFileName == fileName) { // already started loading
 			return;
@@ -233,7 +235,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 					// Don't scroll when the file was opened by a link which already scrolls and highlights text
 					// (because it e.g. targets a specific heading)
-					let containsFlashingSpan = this.app.workspace.containerEl.querySelector('span.is-flashing');
+					const containsFlashingSpan = this.app.workspace.containerEl.querySelector('span.is-flashing');
 
 					if (!containsFlashingSpan) {
 						await delay(10)
@@ -257,7 +259,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		let database: { [filePath: string]: CursorState; } = {}
 
 		if (await this.app.vault.adapter.exists(this.settings.databaseFileName)) {
-			let data = await this.app.vault.adapter.read(this.settings.databaseFileName);
+			const data = await this.app.vault.adapter.read(this.settings.databaseFileName);
 			database = JSON.parse(data);
 		}
 
@@ -281,16 +283,16 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 	getCursorState(): CursorState {
 		const state: CursorState = {};
-		let editor = this.getEditor();
+		const editor = this.getEditor();
 
 		if (editor) {
 			state.scrollState = editor.getScrollInfo();
-			let from = editor.getCursor("anchor");
-			let to = editor.getCursor("head");
+			const from = editor.getCursor("anchor");
+			const to = editor.getCursor("head");
 			if (from && to) {
 				state.cursor = {
-					from: { ch: from.ch, line: from.line },
-					to: { ch: to.ch, line: to.line }
+					from: {ch: from.ch, line: from.line},
+					to: {ch: to.ch, line: to.line}
 				}
 			}
 		}
@@ -299,7 +301,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	setCursorState(state: CursorState) {
-		let editor = this.getEditor();
+		const editor = this.getEditor();
 		if (editor) {
 			if (state.cursor) {
 				editor.setSelection(state.cursor.from, state.cursor.to);
@@ -315,7 +317,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	async loadSettings() {
-		let settings: PluginSettings = {
+		const settings: PluginSettings = {
 			...DEFAULT_SETTINGS,
 			...(await this.loadData())
 		}
@@ -326,7 +328,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	async saveSettings(newSettings: PluginSettings): Promise<void> {
-		this.settings = {... newSettings};
+		this.settings = {...newSettings};
 		await this.saveData(newSettings);
 	}
 }

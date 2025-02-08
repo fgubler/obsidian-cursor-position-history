@@ -12,7 +12,7 @@ export class SettingsTab extends PluginSettingTab {
 	}
 
 	display(): void {
-		let { containerEl } = this;
+		const { containerEl } = this;
 		const settings = this.settingsProvider.settings;
 
 		containerEl.empty();
