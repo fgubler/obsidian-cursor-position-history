@@ -1,11 +1,15 @@
 import {Editor, EditorPosition, TFile, WorkspaceLeaf} from "obsidian";
+import {SettingsProvider} from "./models/PluginSettings";
+import {serializeError} from "./utils/LoggingUtil";
 
-const MAX_HISTORY_LENGTH = 100;
+const BIG_LINE_CHANGE_THRESHOLD = 20;
 
 export class CursorPositionHistoryService {
 	previousPositions: HistoricCursorPosition[] = [];
 	nextPositions: HistoricCursorPosition[] = [];
 	currentPosition?: HistoricCursorPosition;
+
+	constructor(private settingsProvider: SettingsProvider) {}
 
 	/** update the current position based on the user's scrolling */
 	updateCurrentPosition(position: HistoricCursorPosition) {
@@ -64,14 +68,55 @@ export class CursorPositionHistoryService {
 		fromPosition: HistoricCursorPosition | undefined,
 		toPosition: HistoricCursorPosition
 	): Promise<void> {
-		if (fromPosition?.file != toPosition.file) {
+		if (fromPosition?.file !== toPosition.file) {
 			await activeLeaf?.openFile(toPosition.file)
 		}
 
 		const editorPosition: EditorPosition = { line: toPosition.line, ch: toPosition.positionInLine };
+		const scrollToCenter = await this.shouldScrollToCenter(editor, fromPosition, toPosition);
+
 		editor?.setSelection(editorPosition)
-		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, true);
+		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, scrollToCenter);
 	}
+
+	/**
+	 * Only scroll to the center if we move by "many" lines.
+	 * Ideally, that means if the new position is currently visible on the screen.
+	 * As a fallback, we just use a fixed number of lines as threshold.
+	 */
+	private async shouldScrollToCenter(
+		editor: Editor | null,
+		fromPosition: HistoricCursorPosition | undefined,
+		toPosition: HistoricCursorPosition
+	): Promise<boolean> {
+		if (!editor) {
+			return false; // cannot scroll anyway
+		}
+		if (!fromPosition || fromPosition?.file !== toPosition.file) {
+			return true;
+		}
+
+		try {
+			const codeMirror = (editor as any).cm; // CodeMirror is the underlying editor of Obsidian
+			if (codeMirror && codeMirror.visibleRanges && (codeMirror.visibleRanges.length ?? 0) > 0) {
+				const visibleRange: CodeMirrorPositionRange = codeMirror.visibleRanges[0];
+				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line);
+				const toPositionAbsolute = toLinePositionRange.from + toPosition.positionInLine;
+
+				const toPositionVisibleOnScreen = toPositionAbsolute >= visibleRange.from &&
+					toPositionAbsolute <= visibleRange.to;
+
+				return !toPositionVisibleOnScreen;
+			} else {
+				const fromPositionLine = fromPosition?.line ?? 0;
+				return Math.abs(fromPositionLine - toPosition.line) > BIG_LINE_CHANGE_THRESHOLD;
+			}
+		} catch (error) {
+			console.warn(`Failed to determine whether to scroll to center: ${serializeError(error)}`);
+			return false;
+		}
+	}
+
 
 	/**
 	 * Compares two positions and returns whether they are different enough to be stored.
@@ -97,7 +142,8 @@ export class CursorPositionHistoryService {
 	}
 
 	private enforceMaxHistoryLength(history: HistoricCursorPosition[]): HistoricCursorPosition[] {
-		return history.slice(-MAX_HISTORY_LENGTH);
+		const maxHistoryLength = this.settingsProvider.settings.maxHistoryLength;
+		return history.slice(-maxHistoryLength);
 	}
 }
 
@@ -105,4 +151,13 @@ interface HistoricCursorPosition {
 	file: TFile;
 	line: number;
 	positionInLine: number;
+}
+
+/**
+ * Describes a range in the editor of CodeMirror based on characters in the file.
+ * The numbers represent the absolute character position in the file (ignoring lines).
+ */
+interface CodeMirrorPositionRange {
+	from: number;
+	to: number;
 }
