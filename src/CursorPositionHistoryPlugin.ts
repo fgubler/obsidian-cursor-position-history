@@ -12,7 +12,7 @@ import {
 	SettingsProvider
 } from "./models/PluginSettings";
 import {PLUGIN_NAME} from "./models/Constants";
-import {CursorPositionHistoryService} from "./CursorPositionHistoryService";
+import {EphemeralPositionHistoryService} from "./EphemeralPositionHistoryService";
 
 export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvider {
 	settings: PluginSettings;
@@ -21,7 +21,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	lastSavedDatabase: DatabaseRepresentation;
 
 	loadedLeafIdList: string[] = [];
-	historyService!: CursorPositionHistoryService;
+	historyService!: EphemeralPositionHistoryService;
 
 	latestCursorState: CursorState | undefined;
 	lastLoadedFileName: string;
@@ -29,7 +29,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	loadingFile = false;
 
 	async onload() {
-		this.historyService = new CursorPositionHistoryService(this);
+		this.historyService = new EphemeralPositionHistoryService(this);
 
 		await this.loadSettings();
 		await this.initializeDatabase();

@@ -4,14 +4,14 @@ import {serializeError} from "./utils/LoggingUtil";
 
 const BIG_LINE_CHANGE_THRESHOLD = 20;
 
-export class CursorPositionHistoryService {
+export class EphemeralPositionHistoryService {
 	previousPositions: HistoricCursorPosition[] = [];
 	nextPositions: HistoricCursorPosition[] = [];
 	currentPosition?: HistoricCursorPosition;
 
 	constructor(private settingsProvider: SettingsProvider) {}
 
-	/** update the current position based on the user's scrolling */
+	/** update the current position based on the user's scrolling, writing, etc. */
 	updateCurrentPosition(position: HistoricCursorPosition) {
 		if (this.hasEnoughDifference(this.currentPosition, position)) {
 			if (this.currentPosition) {
