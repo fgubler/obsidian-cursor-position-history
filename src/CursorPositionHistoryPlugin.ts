@@ -141,6 +141,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 					file: activeFile,
 					line: state.cursor.to.line,
 					positionInLine: state.cursor.to.ch,
+					epochTimestampMs: Date.now()
 				})
 			}
 		}

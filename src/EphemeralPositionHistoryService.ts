@@ -3,6 +3,7 @@ import {SettingsProvider} from "./models/PluginSettings";
 import {serializeError} from "./utils/LoggingUtil";
 
 const BIG_LINE_CHANGE_THRESHOLD = 20;
+const NEXT_POSITIONS_CLEAR_TIME_THRESHOLD_S = 60;
 
 export class EphemeralPositionHistoryService {
 	previousPositions: HistoricCursorPosition[] = [];
@@ -13,14 +14,19 @@ export class EphemeralPositionHistoryService {
 
 	/** update the current position based on the user's scrolling, writing, etc. */
 	updateCurrentPosition(position: HistoricCursorPosition) {
-		if (this.hasEnoughDifference(this.currentPosition, position)) {
+		if (this.hasEnoughSpatialDifference(this.currentPosition, position)) {
 			if (this.currentPosition) {
 				this.previousPositions.push(this.currentPosition);
 				this.previousPositions = this.enforceMaxHistoryLength(this.previousPositions);
 			}
 
+			if (this.shouldClearNextPositions(position)) {
+				this.nextPositions = [];
+			}
+
 			this.currentPosition = position;
-			this.nextPositions = [];
+		} else if (this.currentPosition && this.currentPosition.epochTimestampMs < position.epochTimestampMs) {
+			this.currentPosition.epochTimestampMs = position.epochTimestampMs;
 		}
 	}
 
@@ -51,15 +57,15 @@ export class EphemeralPositionHistoryService {
 			return;
 		}
 
-		const currentPosition = this.currentPosition;
+		const previousPosition = this.currentPosition;
 		this.currentPosition = nextPosition;
 
-		if (currentPosition) {
-			this.previousPositions.push(currentPosition);
+		if (previousPosition) {
+			this.previousPositions.push(previousPosition);
 			this.previousPositions = this.enforceMaxHistoryLength(this.previousPositions);
 		}
 
-		await this.navigateToPosition(editor, activeLeaf, currentPosition, nextPosition);
+		await this.navigateToPosition(editor, activeLeaf, previousPosition, nextPosition);
 	}
 
 	private async navigateToPosition(
@@ -122,7 +128,7 @@ export class EphemeralPositionHistoryService {
 	 * Compares two positions and returns whether they are different enough to be stored.
 	 * Ignores the position within a line: it changes too often and is hardly irrelevant.
 	 */
-	private hasEnoughDifference(previousPosition?: HistoricCursorPosition, newPosition?: HistoricCursorPosition): boolean {
+	private hasEnoughSpatialDifference(previousPosition?: HistoricCursorPosition, newPosition?: HistoricCursorPosition): boolean {
 		if (!previousPosition) {
 			return !!newPosition;
 		}
@@ -141,6 +147,22 @@ export class EphemeralPositionHistoryService {
 		return previousPosition.line !== newPosition.line;
 	}
 
+	/**
+	 * It is nice if you can navigate back, copy something and navigate forward again.
+	 * But selecting the text to copy will create a new entry in the history.
+	 * Therefore, we don't want to clear the forward-history immediately.
+	 */
+	private shouldClearNextPositions(newPosition: HistoricCursorPosition): boolean {
+		if (this.nextPositions.length <= 0) {
+			return false; // already empty: no point in clearing
+		}
+		const nextPositionTimestampMs = this.nextPositions[this.nextPositions.length - 1]?.epochTimestampMs ?? 0;
+		const newTimestampMs = newPosition.epochTimestampMs;
+		const timeDifferenceMs = newTimestampMs - nextPositionTimestampMs;
+
+		return timeDifferenceMs > 1000 * NEXT_POSITIONS_CLEAR_TIME_THRESHOLD_S;
+	}
+
 	private enforceMaxHistoryLength(history: HistoricCursorPosition[]): HistoricCursorPosition[] {
 		const maxHistoryLength = this.settingsProvider.settings.maxHistoryLength;
 		return history.slice(-maxHistoryLength);
@@ -151,6 +173,7 @@ interface HistoricCursorPosition {
 	file: TFile;
 	line: number;
 	positionInLine: number;
+	epochTimestampMs: number;
 }
 
 /**
