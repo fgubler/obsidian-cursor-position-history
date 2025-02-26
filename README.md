@@ -1,4 +1,4 @@
-# Obsidian Cursor Position History Plugin
+# Cursor Position History Plugin
 
 **Effortlessly navigate your notes with enhanced cursor memory and history tracking.**
 
