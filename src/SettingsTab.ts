@@ -17,7 +17,7 @@ export class SettingsTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', { text: `${PLUGIN_NAME} - Settings` });
+		containerEl.createEl('h3', { text: `Plugin Description` });
 
 		containerEl.createEl("p", {
 			text: "This plugin has two functionalities - both related to the position of the cursor within the editor.",
@@ -56,10 +56,11 @@ export class SettingsTab extends PluginSettingTab {
 			.setName('Delay after opening a new note in milliseconds')
 			.setDesc("A time-delay to avoid scrolling when opening a file through a link which already scrolls to a specific position. " +
 				"If you are not using links to page sections, set the delay to zero (slider to the left). Slider values: 0-300 ms (default value: 200 ms).")
-			.addSlider((text) =>
-				text
+			.addSlider((slider) =>
+				slider
 					.setLimits(0, 300, 10)
 					.setValue(settings.delayAfterFileOpeningMs)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
 						settings.delayAfterFileOpeningMs = value;
 						await this.settingsProvider.saveSettings(settings);
@@ -70,10 +71,11 @@ export class SettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Delay between saving the current cursor position')
 			.setDesc(`The current data is stored to the database file periodically (as well as when Obsidian is closed). Slider values: ${this.minSaveTimeoutMs / 1000}-${maxSaveTimeoutMs / 1000}s (default value: ${this.minSaveTimeoutMs / 1000}s).`)
-			.addSlider((text) =>
-				text
+			.addSlider((slider) =>
+				slider
 					.setLimits(this.minSaveTimeoutMs, maxSaveTimeoutMs, 10)
 					.setValue(settings.saveTimoutMs)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
 						settings.saveTimoutMs = value;
 						await this.settingsProvider.saveSettings(settings);
@@ -83,10 +85,11 @@ export class SettingsTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Maximum history length')
 			.setDesc(`The history of the last N cursor positions is saved (until restarting Obsidian) to allow the user to go back and forth with short-cuts. Slider values: 100-2000 (default value: ${MAX_HISTORY_LENGTH}).`)
-			.addSlider((text) =>
-				text
+			.addSlider((slider) =>
+				slider
 					.setLimits(100, 2000, 100)
 					.setValue(settings.maxHistoryLength)
+					.setDynamicTooltip()
 					.onChange(async (value) => {
 						settings.maxHistoryLength = value;
 						await this.settingsProvider.saveSettings(settings);
