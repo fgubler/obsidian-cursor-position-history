@@ -1,7 +1,7 @@
 import {Editor, MarkdownView, Plugin, TAbstractFile} from "obsidian";
 import {SettingsTab} from "./SettingsTab";
 import {serializeError} from "./utils/LoggingUtil";
-import {copySerializable, delay} from "./utils/BaseUtil";
+import {copySerializable} from "./utils/BaseUtil";
 import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./utils/ObsidianUtil";
 import {CursorState, DatabaseRepresentation} from "./models/DataTypes";
 import {
@@ -232,14 +232,15 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 				state = this.database[fileName];
 				if (state) {
 					// wait until the file is ready
-					await delay(this.settings.delayAfterFileOpeningMs)
+					await sleep(this.settings.delayAfterFileOpeningMs)
 
 					// Don't scroll when the file was opened by a link which already scrolls and highlights text
 					// (because it e.g. targets a specific heading)
 					const containsFlashingSpan = this.app.workspace.containerEl.querySelector('span.is-flashing');
 
 					if (!containsFlashingSpan) {
-						await delay(10)
+						const delayMs = 10;
+						await sleep(delayMs)
 						this.setCursorState(state);
 					}
 				}
