@@ -29,7 +29,15 @@ jobs:
               run: |
                   tag="${GITHUB_REF#refs/tags/}"
                   
-                  gh release create "$tag" \
-                    --title="$tag" \
-                    --draft \
-                    main.js manifest.json styles.css
+                  # Check if styles.css is non-empty
+                  if [ -s styles.css ]; then
+                    gh release create "$tag" \
+                      --title="$tag" \
+                      --draft \
+                      main.js manifest.json styles.css
+                  else
+                    gh release create "$tag" \
+                      --title="$tag" \
+                      --draft \
+                      main.js manifest.json
+                  fi
