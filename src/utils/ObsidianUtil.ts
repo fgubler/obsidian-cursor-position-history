@@ -22,7 +22,7 @@ export function getLeafId(leaf: WorkspaceLeaf): string  {
 export function createFileIdentifier(leaf: WorkspaceLeaf | null): string | null {
 	const correspondingFile = leaf?.getViewState().state?.file;
 
-	if (!correspondingFile) {
+	if (!correspondingFile || typeof correspondingFile !== 'string') {
 		return null;
 	}
 
