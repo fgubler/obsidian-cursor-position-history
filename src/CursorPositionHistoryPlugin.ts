@@ -1,4 +1,4 @@
-import {Editor, MarkdownView, Plugin, TAbstractFile} from "obsidian";
+import {Editor, MarkdownView, Plugin, TAbstractFile, Tasks} from "obsidian";
 import {SettingsTab} from "./SettingsTab";
 import {logRejection, serializeError} from "./utils/LoggingUtil";
 import {copySerializable} from "./utils/BaseUtil";
@@ -27,6 +27,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	lastLoadedFileName: string;
 
 	loadingFile = false;
+
+	private saveTimeoutId: number | undefined;
 
 	async onload() {
 		this.historyService = new EphemeralPositionHistoryService(this);
@@ -60,8 +62,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		);
 
 		this.registerEvent(
-			this.app.workspace.on('quit', () =>
-				logRejection(this.writeDatabase(this.database), 'failed to write database on quit')),
+			this.app.workspace.on('quit', (tasks: Tasks) => {
+				const write = this.writeDatabase(this.database);
+				tasks.addPromise(write);
+				logRejection(write, 'failed to write database on quit');
+			}),
 		);
 
 
@@ -79,10 +84,17 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			window.setInterval(() => this.checkCursorStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
 		);
 
-		this.registerInterval(
-			window.setInterval(() =>
-				logRejection(this.writeDatabase(this.database), 'failed to write database'), this.settings.saveTimoutMs)
-		);
+		this.scheduleNextSave();
+		this.register(() => window.clearTimeout(this.saveTimeoutId));
+	}
+
+	/** Re-arms the save timer on every tick so changes to `saveTimoutMs` take effect immediately. */
+	private scheduleNextSave(): void {
+		window.clearTimeout(this.saveTimeoutId);
+		this.saveTimeoutId = window.setTimeout(() => {
+			logRejection(this.writeDatabase(this.database), 'failed to write database');
+			this.scheduleNextSave();
+		}, this.settings.saveTimoutMs);
 	}
 
 	private async registerShortcutCommands(): Promise<void> {
@@ -334,7 +346,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	async saveSettings(newSettings: PluginSettings): Promise<void> {
+		const saveTimeoutChanged = this.settings.saveTimoutMs !== newSettings.saveTimoutMs;
 		this.settings = {...newSettings};
 		await this.saveData(newSettings);
+		if (saveTimeoutChanged) {
+			this.scheduleNextSave();
+		}
 	}
 }
