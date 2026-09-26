@@ -14,6 +14,7 @@ export class SettingsTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		const settings = this.settingsProvider.settings;
+		const persist = () => logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
 
 		containerEl.empty();
 
@@ -50,7 +51,7 @@ export class SettingsTab extends PluginSettingTab {
 					.setValue(settings.databaseFilePath)
 					.onChange((value: string) => {
 						settings.databaseFilePath = value;
-						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
+						persist();
 					})
 			);
 
@@ -65,7 +66,7 @@ export class SettingsTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange((value) => {
 						settings.delayAfterFileOpeningMs = value;
-						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
+						persist();
 					})
 			);
 
@@ -80,7 +81,7 @@ export class SettingsTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange((value) => {
 						settings.saveTimoutMs = value;
-						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
+						persist();
 					})
 			);
 
@@ -94,7 +95,7 @@ export class SettingsTab extends PluginSettingTab {
 					.setDynamicTooltip()
 					.onChange((value) => {
 						settings.maxHistoryLength = value;
-						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
+						persist();
 					})
 			);
 	}
