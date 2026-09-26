@@ -2,13 +2,17 @@ import {WorkspaceLeaf} from "obsidian";
 
 export const INVALID_FILE_IDENTIFIER = '[INVALID_FILE_IDENTIFIER]';
 
-/** the leafs have IDs but that is an internal detail. */
+/** the leafs have IDs but that is an internal, undocumented detail. */
+interface LeafWithId {
+	id?: unknown;
+}
+
 export function getLeafId(leaf: WorkspaceLeaf): string  {
-	const id = (leaf as any).id;
+	const id = (leaf as WorkspaceLeaf & LeafWithId).id;
 	if (!id || typeof id !== 'string') {
 		return '[NO_LEAF_ID]';
 	}
-	return id as string;
+	return id;
 }
 
 /**

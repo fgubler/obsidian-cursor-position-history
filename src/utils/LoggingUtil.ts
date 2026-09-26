@@ -1,4 +1,4 @@
-export function serializeError(error: any, printStack: boolean = false): string {
+export function serializeError(error: unknown, printStack: boolean = false): string {
 	if (!error) {
 		return '[empty-error]';
 	} else if (typeof error === 'string') {
@@ -15,25 +15,31 @@ export function serializeError(error: any, printStack: boolean = false): string 
 	}
 }
 
-function serializeErrorObject(error: any, printStack: boolean): string {
+function serializeErrorObject(error: unknown, printStack: boolean): string {
 	const serializableError: SerializableError = {};
 
-	if ('message' in error) {
-		serializableError.message = error.message ?? '[no message]';
-	}
-	if ('stack' in error) {
-		const stackTrace = error.stack ?? '[no stack]';
-		serializableError.stack = printStack ? stackTrace : '[removed]';
-	}
-	if ('cause' in error) {
-		serializableError.cause = serializeError(error.cause, printStack);
+	if (isRecord(error)) {
+		if ('message' in error) {
+			serializableError.message = error.message ?? '[no message]';
+		}
+		if ('stack' in error) {
+			const stackTrace = error.stack ?? '[no stack]';
+			serializableError.stack = printStack ? stackTrace : '[removed]';
+		}
+		if ('cause' in error) {
+			serializableError.cause = serializeError(error.cause, printStack);
+		}
 	}
 
 	return JSON.stringify(serializableError);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
 interface SerializableError {
-	message?: string;
-	stack?: string;
+	message?: unknown;
+	stack?: unknown;
 	cause?: string;
 }

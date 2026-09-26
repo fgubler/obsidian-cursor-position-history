@@ -103,7 +103,7 @@ export class EphemeralPositionHistoryService {
 		}
 
 		try {
-			const codeMirror = (editor as any).cm; // CodeMirror is the underlying editor of Obsidian
+			const codeMirror = (editor as EditorWithCodeMirror).cm; // CodeMirror is the underlying editor of Obsidian
 			if (codeMirror && codeMirror.visibleRanges && (codeMirror.visibleRanges.length ?? 0) > 0) {
 				const visibleRange: CodeMirrorPositionRange = codeMirror.visibleRanges[0];
 				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line);
@@ -183,4 +183,16 @@ interface HistoricCursorPosition {
 interface CodeMirrorPositionRange {
 	from: number;
 	to: number;
+}
+
+/** Obsidian's Editor does not expose the underlying CodeMirror instance in its public types. */
+interface EditorWithCodeMirror {
+	cm?: {
+		visibleRanges?: CodeMirrorPositionRange[];
+		state: {
+			doc: {
+				line(lineNumber: number): CodeMirrorPositionRange;
+			};
+		};
+	};
 }
