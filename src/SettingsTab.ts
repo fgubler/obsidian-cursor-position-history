@@ -1,6 +1,5 @@
 import {App, PluginSettingTab, Setting, TextComponent} from "obsidian";
 import {CursorPositionHistoryPlugin} from "./CursorPositionHistoryPlugin";
-import {PLUGIN_NAME} from "./models/Constants";
 import {MAX_HISTORY_LENGTH, SettingsProvider} from "./models/PluginSettings";
 
 export class SettingsTab extends PluginSettingTab {
