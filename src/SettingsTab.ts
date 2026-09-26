@@ -16,7 +16,9 @@ export class SettingsTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h3', { text: `Plugin Description` });
+		new Setting(containerEl)
+			.setName('Plugin description')
+			.setHeading();
 
 		containerEl.createEl("p", {
 			text: "This plugin has two functionalities - both related to the position of the cursor within the editor.",
