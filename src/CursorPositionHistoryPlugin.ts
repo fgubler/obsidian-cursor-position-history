@@ -41,7 +41,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		await this.registerTimeIntervals();
 		await this.registerShortcutCommands();
 
-		await this.restoreCursorState();
+		// during startup, the workspace (and the editors) are not ready yet when the plugin is loaded
+		this.app.workspace.onLayoutReady(() =>
+			logRejection(this.restoreCursorState(), 'failed to restore cursor state on startup'));
 	}
 
 	private async initializeDatabase(): Promise<void> {
