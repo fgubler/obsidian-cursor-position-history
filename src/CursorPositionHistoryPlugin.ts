@@ -286,7 +286,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		if (await this.app.vault.adapter.exists(this.settings.databaseFilePath)) {
 			const data = await this.app.vault.adapter.read(this.settings.databaseFilePath);
-			database = JSON.parse(data);
+			database = JSON.parse(data) as DatabaseRepresentation;
 		}
 
 		return database;
@@ -348,7 +348,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		const settings: PluginSettings = {
 			...defaultSettings,
-			...(await this.loadData())
+			...(await this.loadData() as Partial<PluginSettings> | null)
 		}
 		if (settings?.saveTimoutMs < MIN_SAVE_TIMEOUT_MS) {
 			settings.saveTimoutMs = MIN_SAVE_TIMEOUT_MS;
