@@ -55,13 +55,13 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 	private async registerEvents(): Promise<void> {
 		this.registerEvent(
-			this.app.workspace.on('file-open', (_) => this.restoreCursorState())
+			this.app.workspace.on('file-open', () =>
+				this.logRejection(this.restoreCursorState(), 'failed to restore cursor state'))
 		);
 
 		this.registerEvent(
-			this.app.workspace.on('quit', () => {
-				this.writeDatabase(this.database)
-			}),
+			this.app.workspace.on('quit', () =>
+				this.logRejection(this.writeDatabase(this.database), 'failed to write database on quit')),
 		);
 
 
@@ -80,8 +80,14 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		);
 
 		this.registerInterval(
-			window.setInterval(() => this.writeDatabase(this.database), this.settings.saveTimoutMs)
+			window.setInterval(() =>
+				this.logRejection(this.writeDatabase(this.database), 'failed to write database'), this.settings.saveTimoutMs)
 		);
+	}
+
+	/** Fire-and-forget a promise while still surfacing a rejection instead of letting it disappear silently. */
+	private logRejection(promise: Promise<unknown>, context: string): void {
+		promise.catch(e => console.error(`${PLUGIN_NAME} ${context}: ` + serializeError(e)));
 	}
 
 	private async registerShortcutCommands(): Promise<void> {
@@ -133,7 +139,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		if (this.shouldSaveState(state)) {
-			this.saveCursorState(state).then();
+			this.logRejection(this.saveCursorState(state), 'failed to save cursor state');
 			this.latestCursorState = state;
 
 			if (activeFile && state.cursor) {
