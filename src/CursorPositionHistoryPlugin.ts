@@ -307,7 +307,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		const databaseChanged = JSON.stringify(this.database) !== JSON.stringify(this.lastSavedDatabase);
 		if (databaseChanged) {
-			await this.app.vault.adapter.write(this.settings.databaseFilePath, JSON.stringify(database));
+			// pretty-printed: line-based diffs keep the file readable in version control
+			const serializedDatabase = JSON.stringify(database, null, 2);
+			await this.app.vault.adapter.write(this.settings.databaseFilePath, serializedDatabase);
 			this.lastSavedDatabase = copySerializable(database);
 		}
 	}
@@ -369,4 +371,5 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			this.scheduleNextSave();
 		}
 	}
+
 }
