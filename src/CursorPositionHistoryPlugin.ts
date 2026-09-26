@@ -226,6 +226,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		if (this.isActiveFileAlreadyLoaded()) {
+			this.lastLoadedFileName = fileName; // also makes a pending restore for another file abort
+			this.latestCursorState = this.getCursorState();
+			this.loadingFile = false; // abort => not loading anymore
 			return;
 		}
 
