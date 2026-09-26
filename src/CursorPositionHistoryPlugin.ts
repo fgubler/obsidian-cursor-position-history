@@ -246,6 +246,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 				if (state) {
 					// wait until the file is ready
 					await sleep(this.settings.delayAfterFileOpeningMs)
+					if (this.wasSupersededBy(fileName)) {
+						return; // another file was opened meanwhile
+					}
 
 					// Don't scroll when the file was opened by a link which already scrolls and highlights text
 					// (because it e.g. targets a specific heading)
@@ -254,6 +257,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 					if (!containsFlashingSpan) {
 						const delayMs = 10;
 						await sleep(delayMs)
+						if (this.wasSupersededBy(fileName)) {
+							return;
+						}
 						this.setCursorState(state);
 					}
 				}
@@ -262,6 +268,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		this.loadingFile = false;
+	}
+
+	/** @return true if a newer restoreCursorState() call for a different file started while this one was waiting. */
+	private wasSupersededBy(fileName: string): boolean {
+		return this.lastLoadedFileName !== fileName;
 	}
 
 	private isActiveFileAlreadyLoaded(): boolean {
