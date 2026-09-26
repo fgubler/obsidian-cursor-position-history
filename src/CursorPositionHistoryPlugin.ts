@@ -1,6 +1,6 @@
 import {Editor, MarkdownView, Plugin, TAbstractFile} from "obsidian";
 import {SettingsTab} from "./SettingsTab";
-import {serializeError} from "./utils/LoggingUtil";
+import {logRejection, serializeError} from "./utils/LoggingUtil";
 import {copySerializable} from "./utils/BaseUtil";
 import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./utils/ObsidianUtil";
 import {CursorState, DatabaseRepresentation} from "./models/DataTypes";
@@ -56,12 +56,12 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	private async registerEvents(): Promise<void> {
 		this.registerEvent(
 			this.app.workspace.on('file-open', () =>
-				this.logRejection(this.restoreCursorState(), 'failed to restore cursor state'))
+				logRejection(this.restoreCursorState(), 'failed to restore cursor state'))
 		);
 
 		this.registerEvent(
 			this.app.workspace.on('quit', () =>
-				this.logRejection(this.writeDatabase(this.database), 'failed to write database on quit')),
+				logRejection(this.writeDatabase(this.database), 'failed to write database on quit')),
 		);
 
 
@@ -81,13 +81,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		this.registerInterval(
 			window.setInterval(() =>
-				this.logRejection(this.writeDatabase(this.database), 'failed to write database'), this.settings.saveTimoutMs)
+				logRejection(this.writeDatabase(this.database), 'failed to write database'), this.settings.saveTimoutMs)
 		);
-	}
-
-	/** Fire-and-forget a promise while still surfacing a rejection instead of letting it disappear silently. */
-	private logRejection(promise: Promise<unknown>, context: string): void {
-		promise.catch(e => console.error(`${PLUGIN_NAME} ${context}: ` + serializeError(e)));
 	}
 
 	private async registerShortcutCommands(): Promise<void> {
@@ -139,7 +134,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		if (this.shouldSaveState(state)) {
-			this.logRejection(this.saveCursorState(state), 'failed to save cursor state');
+			logRejection(this.saveCursorState(state), 'failed to save cursor state');
 			this.latestCursorState = state;
 
 			if (activeFile && state.cursor) {

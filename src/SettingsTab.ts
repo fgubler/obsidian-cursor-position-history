@@ -1,6 +1,7 @@
 import {App, PluginSettingTab, Setting, TextComponent} from "obsidian";
 import {CursorPositionHistoryPlugin} from "./CursorPositionHistoryPlugin";
 import {MAX_HISTORY_LENGTH, SettingsProvider} from "./models/PluginSettings";
+import {logRejection} from "./utils/LoggingUtil";
 
 export class SettingsTab extends PluginSettingTab {
 	private settingsProvider: SettingsProvider;
@@ -47,9 +48,9 @@ export class SettingsTab extends PluginSettingTab {
 				text
 					.setPlaceholder('Example: cursor-position-history.json')
 					.setValue(settings.databaseFilePath)
-					.onChange(async (value: string) => {
+					.onChange((value: string) => {
 						settings.databaseFilePath = value;
-						await this.settingsProvider.saveSettings(settings);
+						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
 					})
 			);
 
@@ -62,9 +63,9 @@ export class SettingsTab extends PluginSettingTab {
 					.setLimits(0, 300, 10)
 					.setValue(settings.delayAfterFileOpeningMs)
 					.setDynamicTooltip()
-					.onChange(async (value) => {
+					.onChange((value) => {
 						settings.delayAfterFileOpeningMs = value;
-						await this.settingsProvider.saveSettings(settings);
+						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
 					})
 			);
 
@@ -77,9 +78,9 @@ export class SettingsTab extends PluginSettingTab {
 					.setLimits(this.minSaveTimeoutMs, maxSaveTimeoutMs, 10)
 					.setValue(settings.saveTimoutMs)
 					.setDynamicTooltip()
-					.onChange(async (value) => {
+					.onChange((value) => {
 						settings.saveTimoutMs = value;
-						await this.settingsProvider.saveSettings(settings);
+						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
 					})
 			);
 
@@ -91,9 +92,9 @@ export class SettingsTab extends PluginSettingTab {
 					.setLimits(100, 2000, 100)
 					.setValue(settings.maxHistoryLength)
 					.setDynamicTooltip()
-					.onChange(async (value) => {
+					.onChange((value) => {
 						settings.maxHistoryLength = value;
-						await this.settingsProvider.saveSettings(settings);
+						logRejection(this.settingsProvider.saveSettings(settings), 'failed to save settings');
 					})
 			);
 	}

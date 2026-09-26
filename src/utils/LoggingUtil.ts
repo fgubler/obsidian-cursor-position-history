@@ -1,3 +1,10 @@
+import {PLUGIN_NAME} from "../models/Constants";
+
+/** Fire-and-forget a promise while still surfacing a rejection instead of letting it disappear silently. */
+export function logRejection(promise: Promise<unknown>, context: string): void {
+	promise.catch(e => console.error(`${PLUGIN_NAME} ${context}: ` + serializeError(e)));
+}
+
 export function serializeError(error: unknown, printStack: boolean = false): string {
 	if (!error) {
 		return '[empty-error]';
