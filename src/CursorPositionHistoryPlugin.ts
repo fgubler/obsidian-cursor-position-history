@@ -225,6 +225,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			return;
 		}
 
+		const openedByHistoryNavigation = this.historyService.consumeNavigationTarget(fileName);
+
 		if (this.isActiveFileAlreadyLoaded()) {
 			this.lastLoadedFileName = fileName; // also makes a pending restore for another file abort
 			this.latestCursorState = this.getCursorState();
@@ -246,7 +248,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 			if (fileName) {
 				state = this.database[fileName];
-				if (state) {
+				if (state && !openedByHistoryNavigation) {
 					// wait until the file is ready
 					await sleep(this.settings.delayAfterFileOpeningMs)
 					if (this.wasSupersededBy(fileName)) {
