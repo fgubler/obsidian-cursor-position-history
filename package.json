@@ -13,6 +13,8 @@
 	"author": "",
 	"license": "MIT",
 	"devDependencies": {
+		"@codemirror/state": "6.5.0",
+		"@codemirror/view": "6.38.6",
 		"@eslint/js": "^10.0.1",
 		"@types/node": "22.20.4",
 		"esbuild": "^0.25.0",

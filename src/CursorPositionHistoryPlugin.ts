@@ -1,11 +1,11 @@
-import {Editor, MarkdownView, Plugin, TAbstractFile, Tasks} from "obsidian";
+import {Editor, EditorRange, MarkdownView, Plugin, TAbstractFile, Tasks, TFile} from "obsidian";
+import {ViewPlugin} from "@codemirror/view";
 import {SettingsTab} from "./SettingsTab";
 import {logRejection, serializeError} from "./utils/LoggingUtil";
 import {copySerializable} from "./utils/BaseUtil";
 import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./utils/ObsidianUtil";
 import {CursorState, DatabaseRepresentation} from "./models/DataTypes";
 import {
-	CURSOR_POSITION_UPDATE_INTERVAL_MS,
 	DEFAULT_SETTINGS,
 	MIN_SAVE_TIMEOUT_MS,
 	PluginSettings,
@@ -13,8 +13,9 @@ import {
 } from "./models/PluginSettings";
 import {PLUGIN_NAME} from "./models/Constants";
 import {EphemeralPositionHistoryService} from "./EphemeralPositionHistoryService";
+import {CursorObserver, CursorUpdateHandler} from "./CursorObserver";
 
-export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvider {
+export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvider, CursorUpdateHandler {
 	settings: PluginSettings;
 
 	database: DatabaseRepresentation;
@@ -23,7 +24,6 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	loadedLeafIdList: string[] = [];
 	historyService!: EphemeralPositionHistoryService;
 
-	latestCursorState: CursorState | undefined;
 	lastLoadedFileName: string;
 
 	loadingFile = false;
@@ -38,6 +38,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		this.addSettingTab(new SettingsTab(this.app, this, MIN_SAVE_TIMEOUT_MS));
 
 		await this.registerEvents();
+		this.registerCursorObserver();
 		await this.registerTimeIntervals();
 		await this.registerShortcutCommands();
 
@@ -81,11 +82,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		);
 	}
 
-	private async registerTimeIntervals(): Promise<void> {
-		this.registerInterval(
-			window.setInterval(() => this.checkCursorStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
-		);
+	private registerCursorObserver(): void {
+		this.registerEditorExtension(ViewPlugin.define(view => new CursorObserver(view, this)));
+	}
 
+	private async registerTimeIntervals(): Promise<void> {
 		this.scheduleNextSave();
 		this.register(() => window.clearTimeout(this.saveTimeoutId));
 	}
@@ -132,66 +133,50 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 
-	checkCursorStateChanged() {
-		const activeFile = this.app.workspace.getActiveFile();
-		const fileName = activeFile?.path;
+	handleCursorUpdate(file: TFile, editor: Editor, hasFocus: boolean): void {
+		if (this.isRestoring(file.path)) {
+			return; // the position is being restored: don't record intermediate states
+		}
 
-		// wait until the file is loaded
-		if (!fileName || !this.lastLoadedFileName || fileName != this.lastLoadedFileName || this.loadingFile) {
+		const state = this.getCursorState(editor);
+		if (!this.isValidState(state)) {
 			return;
 		}
 
-		const state = this.getCursorState();
-
-		if (!this.latestCursorState) {
-			this.latestCursorState = state;
+		const previousState = this.database[file.path];
+		if (this.isCursorStatesEquals(state, previousState)) {
+			return;
 		}
+		this.database[file.path] = state;
 
-		if (this.shouldSaveState(state)) {
-			logRejection(this.saveCursorState(state), 'failed to save cursor state');
-			this.latestCursorState = state;
-
-			if (activeFile && state.cursor) {
-				this.historyService.updateCurrentPosition({
-					file: activeFile,
-					line: state.cursor.to.line,
-					positionInLine: state.cursor.to.ch,
-					epochTimestampMs: Date.now()
-				})
-			}
+		// Only user navigation belongs into the history: not scrolling (the cursor stays), not changes in a
+		// background pane, and not the first state of a file (it becomes part of the history once the cursor moves).
+		const cursorMoved = !!previousState && !this.isCursorRangesEquals(state.cursor, previousState.cursor);
+		if (hasFocus && cursorMoved && state.cursor) {
+			this.historyService.updateCurrentPosition({
+				file: file,
+				line: state.cursor.to.line,
+				positionInLine: state.cursor.to.ch,
+				epochTimestampMs: Date.now()
+			});
 		}
 	}
 
-	private shouldSaveState(state: CursorState): boolean {
+	/** @return true while restoreCursorState() is running for the given file (updates of other files are unaffected). */
+	private isRestoring(fileName: string): boolean {
+		return this.loadingFile && this.lastLoadedFileName === fileName;
+	}
+
+	private isValidState(state: CursorState): boolean {
 		return !!(
 			state.scrollState &&
 			!isNaN(state.scrollState.top) &&
-			!isNaN(state.scrollState.left) &&
-			!this.isCursorStatesEquals(state, this.latestCursorState)
+			!isNaN(state.scrollState.left)
 		);
 	}
 
 	isCursorStatesEquals(state1: CursorState | undefined, state2: CursorState | undefined): boolean {
-		const cursor1 = state1?.cursor;
-		const cursor2 = state2?.cursor;
-
-		if (!cursor1) {
-			return !cursor2;
-		}
-		if (!cursor2) {
-			return !cursor1;
-		}
-
-		if (cursor1.from.ch != cursor2.from.ch) {
-			return false;
-		}
-		if (cursor1.from.line != cursor2.from.line) {
-			return false;
-		}
-		if (cursor1.to.ch != cursor2.to.ch) {
-			return false;
-		}
-		if (cursor1.to.line != cursor2.to.line) {
+		if (!this.isCursorRangesEquals(state1?.cursor, state2?.cursor)) {
 			return false;
 		}
 
@@ -211,12 +196,15 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		return true;
 	}
 
-
-	async saveCursorState(st: CursorState) {
-		const fileName = this.app.workspace.getActiveFile()?.path;
-		if (fileName && fileName == this.lastLoadedFileName) { //do not save if file changed or was not loaded
-			this.database[fileName] = st;
+	isCursorRangesEquals(cursor1: EditorRange | undefined, cursor2: EditorRange | undefined): boolean {
+		if (!cursor1 || !cursor2) {
+			return !cursor1 && !cursor2;
 		}
+
+		return cursor1.from.ch == cursor2.from.ch &&
+			cursor1.from.line == cursor2.from.line &&
+			cursor1.to.ch == cursor2.to.ch &&
+			cursor1.to.line == cursor2.to.line;
 	}
 
 
@@ -231,7 +219,6 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		if (this.isActiveFileAlreadyLoaded()) {
 			this.lastLoadedFileName = fileName; // also makes a pending restore for another file abort
-			this.latestCursorState = this.getCursorState();
 			this.loadingFile = false; // abort => not loading anymore
 			return;
 		}
@@ -243,38 +230,50 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		this.loadingFile = true;
 
 		if (this.lastLoadedFileName != fileName) {
-			this.latestCursorState = {}
 			this.lastLoadedFileName = fileName;
 
-			let state: CursorState | undefined = undefined;
+			const state = this.database[fileName];
+			let positionedByLink = false;
 
-			if (fileName) {
-				state = this.database[fileName];
-				if (state && !openedByHistoryNavigation) {
-					// wait until the file is ready
-					await sleep(this.settings.delayAfterFileOpeningMs)
+			if (state && !openedByHistoryNavigation) {
+				// wait until the file is ready
+				await sleep(this.settings.delayAfterFileOpeningMs)
+				if (this.wasSupersededBy(fileName)) {
+					return; // another file was opened meanwhile
+				}
+
+				// Don't scroll when the file was opened by a link which already scrolls and highlights text
+				// (because it e.g. targets a specific heading)
+				positionedByLink = !!this.app.workspace.containerEl.querySelector('span.is-flashing');
+
+				if (!positionedByLink) {
+					const delayMs = 10;
+					await sleep(delayMs)
 					if (this.wasSupersededBy(fileName)) {
-						return; // another file was opened meanwhile
+						return;
 					}
-
-					// Don't scroll when the file was opened by a link which already scrolls and highlights text
-					// (because it e.g. targets a specific heading)
-					const containsFlashingSpan = this.app.workspace.containerEl.querySelector('span.is-flashing');
-
-					if (!containsFlashingSpan) {
-						const delayMs = 10;
-						await sleep(delayMs)
-						if (this.wasSupersededBy(fileName)) {
-							return;
-						}
-						this.setCursorState(state);
-					}
+					this.setCursorState(state);
 				}
 			}
-			this.latestCursorState = state;
+
+			this.loadingFile = false;
+
+			if (positionedByLink) {
+				// The link placed the cursor while the restore was pending, and updates were ignored meanwhile:
+				// record the position now, it won't be reported again unless the cursor moves.
+				this.recordCurrentState(fileName);
+			}
 		}
 
 		this.loadingFile = false;
+	}
+
+	/** Records the current state of the active editor, if it shows the given file. */
+	private recordCurrentState(fileName: string): void {
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view?.file?.path === fileName) {
+			this.handleCursorUpdate(view.file, view.editor, view.editor.hasFocus());
+		}
 	}
 
 	/** @return true if a newer restoreCursorState() call for a different file started while this one was waiting. */
@@ -316,19 +315,16 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 	}
 
-	getCursorState(): CursorState {
+	getCursorState(editor: Editor): CursorState {
 		const state: CursorState = {};
-		const editor = this.getEditor();
 
-		if (editor) {
-			state.scrollState = editor.getScrollInfo();
-			const from = editor.getCursor("anchor");
-			const to = editor.getCursor("head");
-			if (from && to) {
-				state.cursor = {
-					from: {ch: from.ch, line: from.line},
-					to: {ch: to.ch, line: to.line}
-				}
+		state.scrollState = editor.getScrollInfo();
+		const from = editor.getCursor("anchor");
+		const to = editor.getCursor("head");
+		if (from && to) {
+			state.cursor = {
+				from: {ch: from.ch, line: from.line},
+				to: {ch: to.ch, line: to.line}
 			}
 		}
 

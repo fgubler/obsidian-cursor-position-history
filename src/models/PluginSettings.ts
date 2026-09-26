@@ -11,7 +11,7 @@ export interface PluginSettings {
 }
 
 export const MIN_SAVE_TIMEOUT_MS = 5000;
-export const CURSOR_POSITION_UPDATE_INTERVAL_MS = 200;
+export const CURSOR_UPDATE_DEBOUNCE_MS = 150;
 export const MAX_HISTORY_LENGTH = 500;
 export const PLUGIN_FOLDER_NAME = 'cursor-position-history';
 
