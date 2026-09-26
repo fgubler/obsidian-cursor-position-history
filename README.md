@@ -29,6 +29,20 @@ With this plugin, you'll never lose your place again when switching between note
 - `Return to Previous Cursor Position`: go back
 - `Re-return to Next Cursor Position`: go forward
 
+## Installation
+
+### From Obsidian (recommended)
+
+1. Open **Settings** → **Community plugins** and make sure **Restricted mode** is off.
+2. Click **Browse** and search for "Cursor Position History".
+3. Click **Install**, then **Enable**.
+
+### Manually
+
+1. Download `main.js`, `manifest.json`, and `styles.css` (if present) from the [Github Repository](https://github.com/fgubler/obsidian-cursor-position-history).
+2. Create a folder named `cursor-position-history` inside your vault's `.obsidian/plugins/` directory and place the downloaded files there.
+3. Reload Obsidian, then enable the plugin under **Settings** → **Community plugins**.
+
 ## Acknowledgements
 
 This plugin draws inspiration from the following Obsidian plugins, and I would like to thank their authors for their excellent work:
