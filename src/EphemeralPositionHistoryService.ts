@@ -106,7 +106,9 @@ export class EphemeralPositionHistoryService {
 			const codeMirror = (editor as EditorWithCodeMirror).cm; // CodeMirror is the underlying editor of Obsidian
 			if (codeMirror && codeMirror.visibleRanges && (codeMirror.visibleRanges.length ?? 0) > 0) {
 				const visibleRange: CodeMirrorPositionRange = codeMirror.visibleRanges[0];
-				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line);
+
+				// CodeMirror lines are 1-based, Obsidian's are 0-based
+				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line + 1);
 				const toPositionAbsolute = toLinePositionRange.from + toPosition.positionInLine;
 
 				const toPositionVisibleOnScreen = toPositionAbsolute >= visibleRange.from &&
