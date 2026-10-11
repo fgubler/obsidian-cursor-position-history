@@ -31,6 +31,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	private saveTimeoutId: number | undefined;
 
 	async onload() {
+		console.log(`${PLUGIN_NAME} version ${this.manifest.version} loaded`);
 		this.historyService = new EphemeralPositionHistoryService(this);
 
 		await this.loadSettings();
