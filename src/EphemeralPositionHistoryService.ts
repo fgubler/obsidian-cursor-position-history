@@ -10,6 +10,9 @@ export class EphemeralPositionHistoryService {
 	nextPositions: HistoricCursorPosition[] = [];
 	currentPosition?: HistoricCursorPosition;
 
+	private lastNavigationTimestampMs = 0;
+	private navigationTargetFile?: TFile;
+
 	constructor(private settingsProvider: SettingsProvider) {}
 
 	/** update the current position based on the user's scrolling, writing, etc. */
@@ -40,6 +43,7 @@ export class EphemeralPositionHistoryService {
 
 		const currentPosition = this.currentPosition;
 		this.currentPosition = previousPosition;
+		this.lastNavigationTimestampMs = Date.now();
 
 		if (currentPosition) {
 			this.nextPositions.push(currentPosition);
@@ -59,6 +63,7 @@ export class EphemeralPositionHistoryService {
 
 		const previousPosition = this.currentPosition;
 		this.currentPosition = nextPosition;
+		this.lastNavigationTimestampMs = Date.now();
 
 		if (previousPosition) {
 			this.previousPositions.push(previousPosition);
@@ -75,7 +80,12 @@ export class EphemeralPositionHistoryService {
 		toPosition: HistoricCursorPosition
 	): Promise<void> {
 		if (fromPosition?.file !== toPosition.file) {
-			await activeLeaf?.openFile(toPosition.file)
+			this.navigationTargetFile = toPosition.file;
+			try {
+				await activeLeaf?.openFile(toPosition.file)
+			} finally {
+				this.navigationTargetFile = undefined;
+			}
 		}
 
 		const editorPosition: EditorPosition = { line: toPosition.line, ch: toPosition.positionInLine };
@@ -83,6 +93,19 @@ export class EphemeralPositionHistoryService {
 
 		editor?.setSelection(editorPosition)
 		editor?.scrollIntoView({ from: editorPosition, to: editorPosition }, scrollToCenter);
+	}
+
+	/**
+	 * Returns true (once) if the file is currently being opened by a backward/forward navigation.
+	 * The navigation then sets the cursor position itself, which must not be overwritten
+	 * by restoring the last known position of the file.
+	 */
+	consumeNavigationTarget(filePath: string): boolean {
+		const isTarget = this.navigationTargetFile?.path === filePath;
+		if (isTarget) {
+			this.navigationTargetFile = undefined;
+		}
+		return isTarget;
 	}
 
 	/**
@@ -103,10 +126,12 @@ export class EphemeralPositionHistoryService {
 		}
 
 		try {
-			const codeMirror = (editor as any).cm; // CodeMirror is the underlying editor of Obsidian
+			const codeMirror = (editor as EditorWithCodeMirror).cm; // CodeMirror is the underlying editor of Obsidian
 			if (codeMirror && codeMirror.visibleRanges && (codeMirror.visibleRanges.length ?? 0) > 0) {
 				const visibleRange: CodeMirrorPositionRange = codeMirror.visibleRanges[0];
-				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line);
+
+				// CodeMirror lines are 1-based, Obsidian's are 0-based
+				const toLinePositionRange: CodeMirrorPositionRange = codeMirror.state.doc.line(toPosition.line + 1);
 				const toPositionAbsolute = toLinePositionRange.from + toPosition.positionInLine;
 
 				const toPositionVisibleOnScreen = toPositionAbsolute >= visibleRange.from &&
@@ -156,9 +181,7 @@ export class EphemeralPositionHistoryService {
 		if (this.nextPositions.length <= 0) {
 			return false; // already empty: no point in clearing
 		}
-		const nextPositionTimestampMs = this.nextPositions[this.nextPositions.length - 1]?.epochTimestampMs ?? 0;
-		const newTimestampMs = newPosition.epochTimestampMs;
-		const timeDifferenceMs = newTimestampMs - nextPositionTimestampMs;
+		const timeDifferenceMs = newPosition.epochTimestampMs - this.lastNavigationTimestampMs;
 
 		return timeDifferenceMs > 1000 * NEXT_POSITIONS_CLEAR_TIME_THRESHOLD_S;
 	}
@@ -183,4 +206,16 @@ interface HistoricCursorPosition {
 interface CodeMirrorPositionRange {
 	from: number;
 	to: number;
+}
+
+/** Obsidian's Editor does not expose the underlying CodeMirror instance in its public types. */
+interface EditorWithCodeMirror {
+	cm?: {
+		visibleRanges?: CodeMirrorPositionRange[];
+		state: {
+			doc: {
+				line(lineNumber: number): CodeMirrorPositionRange;
+			};
+		};
+	};
 }

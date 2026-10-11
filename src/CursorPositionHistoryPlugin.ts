@@ -1,6 +1,6 @@
-import {Editor, MarkdownView, Plugin, TAbstractFile} from "obsidian";
+import {Editor, MarkdownView, Plugin, TAbstractFile, Tasks} from "obsidian";
 import {SettingsTab} from "./SettingsTab";
-import {serializeError} from "./utils/LoggingUtil";
+import {logRejection, serializeError} from "./utils/LoggingUtil";
 import {copySerializable} from "./utils/BaseUtil";
 import {createFileIdentifier, INVALID_FILE_IDENTIFIER} from "./utils/ObsidianUtil";
 import {CursorState, DatabaseRepresentation} from "./models/DataTypes";
@@ -28,6 +28,8 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 	loadingFile = false;
 
+	private saveTimeoutId: number | undefined;
+
 	async onload() {
 		this.historyService = new EphemeralPositionHistoryService(this);
 
@@ -39,7 +41,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		await this.registerTimeIntervals();
 		await this.registerShortcutCommands();
 
-		await this.restoreCursorState();
+		// during startup, the workspace (and the editors) are not ready yet when the plugin is loaded
+		this.app.workspace.onLayoutReady(() =>
+			logRejection(this.restoreCursorState(), 'failed to restore cursor state on startup'));
 	}
 
 	private async initializeDatabase(): Promise<void> {
@@ -55,12 +59,15 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 	private async registerEvents(): Promise<void> {
 		this.registerEvent(
-			this.app.workspace.on('file-open', (_) => this.restoreCursorState())
+			this.app.workspace.on('file-open', () =>
+				logRejection(this.restoreCursorState(), 'failed to restore cursor state'))
 		);
 
 		this.registerEvent(
-			this.app.workspace.on('quit', () => {
-				this.writeDatabase(this.database)
+			this.app.workspace.on('quit', (tasks: Tasks) => {
+				const write = this.writeDatabase(this.database);
+				tasks.addPromise(write);
+				logRejection(write, 'failed to write database on quit');
 			}),
 		);
 
@@ -79,9 +86,17 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			window.setInterval(() => this.checkCursorStateChanged(), CURSOR_POSITION_UPDATE_INTERVAL_MS)
 		);
 
-		this.registerInterval(
-			window.setInterval(() => this.writeDatabase(this.database), this.settings.saveTimoutMs)
-		);
+		this.scheduleNextSave();
+		this.register(() => window.clearTimeout(this.saveTimeoutId));
+	}
+
+	/** Re-arms the save timer on every tick so changes to `saveTimoutMs` take effect immediately. */
+	private scheduleNextSave(): void {
+		window.clearTimeout(this.saveTimeoutId);
+		this.saveTimeoutId = window.setTimeout(() => {
+			logRejection(this.writeDatabase(this.database), 'failed to write database');
+			this.scheduleNextSave();
+		}, this.settings.saveTimoutMs);
 	}
 
 	private async registerShortcutCommands(): Promise<void> {
@@ -133,7 +148,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		if (this.shouldSaveState(state)) {
-			this.saveCursorState(state).then();
+			logRejection(this.saveCursorState(state), 'failed to save cursor state');
 			this.latestCursorState = state;
 
 			if (activeFile && state.cursor) {
@@ -212,7 +227,12 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 			return;
 		}
 
+		const openedByHistoryNavigation = this.historyService.consumeNavigationTarget(fileName);
+
 		if (this.isActiveFileAlreadyLoaded()) {
+			this.lastLoadedFileName = fileName; // also makes a pending restore for another file abort
+			this.latestCursorState = this.getCursorState();
+			this.loadingFile = false; // abort => not loading anymore
 			return;
 		}
 
@@ -230,9 +250,12 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 			if (fileName) {
 				state = this.database[fileName];
-				if (state) {
+				if (state && !openedByHistoryNavigation) {
 					// wait until the file is ready
 					await sleep(this.settings.delayAfterFileOpeningMs)
+					if (this.wasSupersededBy(fileName)) {
+						return; // another file was opened meanwhile
+					}
 
 					// Don't scroll when the file was opened by a link which already scrolls and highlights text
 					// (because it e.g. targets a specific heading)
@@ -241,6 +264,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 					if (!containsFlashingSpan) {
 						const delayMs = 10;
 						await sleep(delayMs)
+						if (this.wasSupersededBy(fileName)) {
+							return;
+						}
 						this.setCursorState(state);
 					}
 				}
@@ -249,6 +275,11 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 		}
 
 		this.loadingFile = false;
+	}
+
+	/** @return true if a newer restoreCursorState() call for a different file started while this one was waiting. */
+	private wasSupersededBy(fileName: string): boolean {
+		return this.lastLoadedFileName !== fileName;
 	}
 
 	private isActiveFileAlreadyLoaded(): boolean {
@@ -262,7 +293,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		if (await this.app.vault.adapter.exists(this.settings.databaseFilePath)) {
 			const data = await this.app.vault.adapter.read(this.settings.databaseFilePath);
-			database = JSON.parse(data);
+			database = JSON.parse(data) as DatabaseRepresentation;
 		}
 
 		return database;
@@ -278,7 +309,9 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		const databaseChanged = JSON.stringify(this.database) !== JSON.stringify(this.lastSavedDatabase);
 		if (databaseChanged) {
-			await this.app.vault.adapter.write(this.settings.databaseFilePath, JSON.stringify(database));
+			// pretty-printed: line-based diffs keep the file readable in version control
+			const serializedDatabase = JSON.stringify(database, null, 2);
+			await this.app.vault.adapter.write(this.settings.databaseFilePath, serializedDatabase);
 			this.lastSavedDatabase = copySerializable(database);
 		}
 	}
@@ -324,7 +357,7 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 
 		const settings: PluginSettings = {
 			...defaultSettings,
-			...(await this.loadData())
+			...(await this.loadData() as Partial<PluginSettings> | null)
 		}
 		if (settings?.saveTimoutMs < MIN_SAVE_TIMEOUT_MS) {
 			settings.saveTimoutMs = MIN_SAVE_TIMEOUT_MS;
@@ -333,7 +366,12 @@ export class CursorPositionHistoryPlugin extends Plugin implements SettingsProvi
 	}
 
 	async saveSettings(newSettings: PluginSettings): Promise<void> {
+		const saveTimeoutChanged = this.settings.saveTimoutMs !== newSettings.saveTimoutMs;
 		this.settings = {...newSettings};
 		await this.saveData(newSettings);
+		if (saveTimeoutChanged) {
+			this.scheduleNextSave();
+		}
 	}
+
 }
